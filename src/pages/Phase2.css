@@ -1,0 +1,321 @@
+/* ============================================================================
+   Phase 2 – Officer Ranking & Assignment
+   Builds on the shared Phase 1 chrome (imported first). This file only adds
+   the Phase 2 specifics: the partition action bar, the Presiding/Polling
+   filter chips, role badges, accent stat cards, and the rank column.
+   Palette: teal (presiding) + indigo (polling) so they read distinctly from
+   Phase 1's blue/green/red status colours.
+   ========================================================================== */
+
+.p2-page .page-overlay {
+  display: none;
+}
+
+/* title icon accent */
+.p2-title-icon {
+  background: linear-gradient(135deg, #0ea5a5, #0b6e6e);
+}
+
+/* info box accent */
+.p2-infobox {
+  background: #e9fbf9;
+  border-color: #b9ece5;
+}
+.p2-infobox .p1-infobox-icon {
+  background: #0ea5a5;
+}
+
+/* ---------------------------- partition bar --------------------------- */
+
+.p2-partition-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 4px 0 22px;
+  padding: 16px 20px;
+  border-radius: 14px;
+  border: 1px solid #cfe9e5;
+  background: linear-gradient(120deg, #f2fdfb 0%, #ffffff 70%);
+  box-shadow: 0 8px 20px rgba(11, 110, 110, 0.08);
+}
+
+.p2-partition-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.p2-partition-count {
+  font-size: 15px;
+  font-weight: 600;
+  color: #0d5f5f;
+}
+.p2-partition-count strong {
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.p2-partition-hint {
+  font-size: 13px;
+  color: #4f7a76;
+}
+
+.p2-partition-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.p2-partition-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 12px 22px;
+  border: none;
+  border-radius: 11px;
+  background: linear-gradient(135deg, #14b8a6, #0b6e6e);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(11, 110, 110, 0.28);
+  transition: transform 0.15s, box-shadow 0.15s, filter 0.15s;
+}
+.p2-partition-btn svg {
+  width: 18px;
+  height: 18px;
+}
+.p2-partition-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(11, 110, 110, 0.34);
+  filter: brightness(1.04);
+}
+.p2-partition-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.p2-reset-btn {
+  padding: 11px 18px;
+  border-radius: 11px;
+  border: 1px solid #cfe2f6;
+  background: #fff;
+  color: #40628a;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.p2-reset-btn:hover {
+  background: #f2f8ff;
+  border-color: #2f85bb;
+}
+
+/* ------------------------- filter chips (roles) ----------------------- */
+
+.p2-chip-presiding {
+  color: #0b7d76;
+  border-color: #b9ece5;
+  background: #f0fdfb;
+}
+.p2-chip-presiding.is-active {
+  background: linear-gradient(135deg, #2ad0bd, #0b6e6e);
+  border-color: #0b6e6e;
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(11, 110, 110, 0.28);
+}
+
+.p2-chip-polling {
+  color: #534ab7;
+  border-color: #d8d5f5;
+  background: #f3f2fe;
+}
+.p2-chip-polling.is-active {
+  background: linear-gradient(135deg, #7f78e0, #534ab7);
+  border-color: #534ab7;
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(83, 74, 183, 0.28);
+}
+
+/* --------------------------- role badges ------------------------------ */
+
+.p2-badge-presiding {
+  color: #0a6b64;
+  background: #d7f6f1;
+  border: 1px solid #a9ebe2;
+  white-space: nowrap;
+}
+
+.p2-badge-polling {
+  color: #453ea0;
+  background: #e8e6fb;
+  border: 1px solid #cdc9f4;
+  white-space: nowrap;
+}
+
+/* ----------------------------- stat cards ----------------------------- */
+
+.p2-stat-presiding {
+  border-color: #b9ece5;
+  background: linear-gradient(180deg, #ffffff, #f0fdfb);
+}
+.p2-stat-presiding .p1-stat-icon {
+  color: #0b7d76;
+  background: #d7f6f1;
+}
+.p2-stat-presiding .p1-stat-num {
+  color: #0b7d76;
+}
+
+.p2-stat-polling {
+  border-color: #d8d5f5;
+  background: linear-gradient(180deg, #ffffff, #f4f3fe);
+}
+.p2-stat-polling .p1-stat-icon {
+  color: #534ab7;
+  background: #e8e6fb;
+}
+.p2-stat-polling .p1-stat-num {
+  color: #534ab7;
+}
+
+/* ----------------------------- rank column ---------------------------- */
+
+.p2-rank {
+  text-align: center;
+}
+.p2-rank span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  font-weight: 800;
+  font-size: 13px;
+  color: #40628a;
+  background: #eef4fb;
+  border: 1px solid #dbe8f6;
+}
+
+/* the top three ranks get a gold/silver/bronze highlight */
+.p2-table tbody tr:nth-child(1) .p2-rank span {
+  color: #8a5a00;
+  background: #fdf1d6;
+  border-color: #f0d99a;
+}
+.p2-table tbody tr:nth-child(2) .p2-rank span {
+  color: #55606e;
+  background: #eef1f5;
+  border-color: #d6dde6;
+}
+.p2-table tbody tr:nth-child(3) .p2-rank span {
+  color: #9a4a24;
+  background: #fbeade;
+  border-color: #f0cdb4;
+}
+
+/* ------------------------------ responsive ---------------------------- */
+
+@media (max-width: 1080px) {
+  .p2-partition-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .p2-partition-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 720px) {
+  .p2-partition-actions {
+    width: 100%;
+  }
+  .p2-partition-btn,
+  .p2-reset-btn {
+    flex: 1;
+    justify-content: center;
+  }
+}
+
+/* --------------------------- empty state ------------------------------ */
+/* Shown when Phase 1 hasn't been run yet (no approved employees stored). */
+
+.p2-empty {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+  padding: 56px 28px;
+  border-radius: 16px;
+  border: 2px dashed #b9d4ee;
+  background: linear-gradient(180deg, #f7fbff, #ffffff);
+}
+
+.p2-empty-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  color: #2f85bb;
+  background: linear-gradient(160deg, #e4f1ff, #ffffff);
+  border: 1px solid #cfe3f8;
+}
+.p2-empty-icon svg {
+  width: 34px;
+  height: 34px;
+}
+
+.p2-empty h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  color: #0d2c56;
+}
+
+.p2-empty p {
+  margin: 0;
+  max-width: 560px;
+  font-size: 15px;
+  line-height: 1.55;
+  color: #5b7595;
+}
+.p2-empty p strong {
+  color: #1d5fa8;
+}
+
+.p2-empty-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 13px 24px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #2f85bb, #073774);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+  text-decoration: none;
+  box-shadow: 0 10px 22px rgba(18, 59, 112, 0.28);
+  transition: transform 0.15s, box-shadow 0.15s, filter 0.15s;
+}
+.p2-empty-btn svg {
+  width: 19px;
+  height: 19px;
+}
+.p2-empty-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 28px rgba(18, 59, 112, 0.34);
+  filter: brightness(1.05);
+}
+
+
