@@ -1,24 +1,25 @@
 import { useMemo, useRef, useState } from "react";
 import "./Phase1.css"; // reuse shared chrome (page, shell, breadcrumb, title, stats, table, pagination, search, upload cards…)
-import "./Phase3.css"; // Phase 3 specifics (allocate button, allocation badges, dual upload accent)
+import "./Phase3.css"; // Phase 3 specifics (allocate button, allocation badges, slot table)
 import Header from "../components/Header.jsx";
 
 /**
  * Phase 3 – Ballot Allocation
  * ---------------------------
- * Two Excel files are uploaded: the Ballot register and the Micro-officer list.
- * The Presiding / Polling officers produced by Phase 2 are pulled from
- * sessionStorage. On clicking "Allocate", both files + the officer lists are
- * POSTed to the backend, which applies the allocation rules (which officer gets
- * which ballot / micro-officer) and returns the allocated list. This page only
- * renders that backend response.
+ * ONE file is uploaded here: the Ballot register. The Presiding / Polling
+ * officers produced by Phase 2 are pulled from sessionStorage. On clicking
+ * "Allocate", the ballot file + the officer lists are POSTed to the backend,
+ * which applies the allocation rules (which officer gets which ballot) and
+ * returns the allocated list. This page only renders that backend response.
+ *
+ * Micro-officers live on Phase 2 / Training (not here).
  *
  * Expected backend response:
  *   {
- *     summary: { totalBallots, allocated, presidingCount, pollingCount, microOfficers },
+ *     summary: { totalBallots, allocated, presidingCount, pollingCount },
  *     rows: [
  *       { ballotId, ballotUnit/psNo, presidingOfficer, pollingOfficer,
- *         microOfficer, mandal, status, remarks }, ...
+ *         mandal, status, remarks }, ...
  *     ]
  *   }
  *
@@ -30,6 +31,8 @@ const API_BASE = "/api";
 const ACCEPTED = [".xlsx", ".xls", ".csv"];
 const PAGE_SIZE = 10;
 const PHASE2_STORE_KEY = (context) => `elections:${context}:phase2-partition`;
+/** Training page reads the allocated teams from here (no re-upload needed). */
+export const PHASE3_STORE_KEY = (context) => `elections:${context}:phase3-result`;
 
 /* ------------------------------- icons -------------------------------- */
 
@@ -118,6 +121,14 @@ function ChevronLeft() {
   );
 }
 
+function ChevronRight() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="m9 18 6-6-6-6" />
+    </svg>
+  );
+}
+
 function TrophyIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -186,7 +197,6 @@ function normalizeRow(raw) {
     psNo: pick(raw, "psNo", "psNumber", "pollingStation", "ps_no", "unit", "ballotUnit") ?? "—",
     presidingOfficer: pick(raw, "presidingOfficer", "presidingOfficerName", "presiding", "poName", "presiding_officer") ?? "—",
     pollingOfficer: pick(raw, "pollingOfficer", "pollingOfficerName", "polling_officer", "polling") ?? "—",
-    microOfficer: pick(raw, "microOfficer", "microOfficerName", "micro_officer", "microOfficerId") ?? "—",
     mandal: pick(raw, "mandal", "workMandal", "ward", "wardMandal", "zone") ?? "—",
     status: statusRaw,
     remarks: pick(raw, "remarks", "remark", "note", "reason") ?? "",
@@ -202,7 +212,6 @@ function normalizeSummary(data, rows) {
     allocated: approved,
     presidingCount: num(sum.presidingCount, new Set(rows.map((r) => r.presidingOfficer).filter((v) => v && v !== "—")).size),
     pollingCount: num(sum.pollingCount, new Set(rows.map((r) => r.pollingOfficer).filter((v) => v && v !== "—")).size),
-    microOfficers: num(sum.microOfficers, new Set(rows.map((r) => r.microOfficer).filter((v) => v && v !== "—")).size),
   };
 }
 
@@ -243,7 +252,6 @@ function loadOfficers(context) {
 function mockAllocate() {
   const presidingPool = ["Venkatesh M", "G. Nagesh", "Sai Krishna", "Hari Prasad", "Suresh Babu"];
   const pollingPool = ["Deepika Rani", "Jyothi K", "Padma V", "Rajesh K", "Swapna", "Krishna M", "Mahesh B", "Sunitha"];
-  const microPool = ["Micro-01 (App)", "Micro-02 (App)", "Micro-03 (App)", "Micro-04 (Web)", "Micro-05 (Web)"];
   const mandals = ["Kakinada", "Samalkot", "Pithapuram", "Tuni", "Peddapuram"];
   const rows = [];
   const total = 24;
@@ -254,7 +262,6 @@ function mockAllocate() {
       psNo: `PS-${120 + i}`,
       presidingOfficer: presidingPool[i % presidingPool.length],
       pollingOfficer: pollingPool[i % pollingPool.length],
-      microOfficer: microPool[i % microPool.length],
       mandal: mandals[i % mandals.length],
       status: "Allocated",
       remarks: "",
@@ -265,7 +272,6 @@ function mockAllocate() {
     allocated: total,
     presidingCount: new Set(rows.map((r) => r.presidingOfficer)).size,
     pollingCount: new Set(rows.map((r) => r.pollingOfficer)).size,
-    microOfficers: new Set(rows.map((r) => r.microOfficer)).size,
   };
   return { summary, rows };
 }
@@ -319,17 +325,27 @@ export default function Phase3({ context = "municipal" }) {
   // Presiding / Polling officers from Phase 2.
   const officers = useMemo(() => loadOfficers(context), [context]);
 
-  // Two upload slots.
+  // Single upload slot: ballot register only.
   const [ballotFile, setBallotFile] = useState(null);
-  const [microFile, setMicroFile] = useState(null);
   const ballotInputRef = useRef(null);
-  const microInputRef = useRef(null);
   const [ballotDrag, setBallotDrag] = useState(false);
-  const [microDrag, setMicroDrag] = useState(false);
 
   const [status, setStatus] = useState("idle"); // idle | allocating | done | error
   const [errorMsg, setErrorMsg] = useState("");
-  const [result, setResult] = useState(null); // { summary, rows }
+  // Restore last allocation (also feeds the Training page) on reload/remount.
+  const [result, setResult] = useState(() => {
+    try {
+      const raw = sessionStorage.getItem(PHASE3_STORE_KEY(context));
+      if (!raw) return null;
+      const data = JSON.parse(raw);
+      if (Array.isArray(data?.rows) && data.rows.length > 0) {
+        return { summary: data.summary, rows: data.rows };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }); // { summary, rows }
 
   const [statusFilter, setStatusFilter] = useState("all"); // all | allocated | rejected
   const [query, setQuery] = useState("");
@@ -349,22 +365,15 @@ export default function Phase3({ context = "municipal" }) {
   }
 
   function onBallotPick(e) { validateAndSet(e.target.files?.[0], setBallotFile); }
-  function onMicroPick(e) { validateAndSet(e.target.files?.[0], setMicroFile); }
   function onBallotDrop(e) { e.preventDefault(); setBallotDrag(false); validateAndSet(e.dataTransfer.files?.[0], setBallotFile); }
-  function onMicroDrop(e) { e.preventDefault(); setMicroDrag(false); validateAndSet(e.dataTransfer.files?.[0], setMicroFile); }
 
   function clearBallot() {
     setBallotFile(null);
     if (ballotInputRef.current) ballotInputRef.current.value = "";
   }
-  function clearMicro() {
-    setMicroFile(null);
-    if (microInputRef.current) microInputRef.current.value = "";
-  }
 
   function reset() {
     setBallotFile(null);
-    setMicroFile(null);
     setResult(null);
     setStatus("idle");
     setErrorMsg("");
@@ -372,18 +381,12 @@ export default function Phase3({ context = "municipal" }) {
     setStatusFilter("all");
     setPage(1);
     if (ballotInputRef.current) ballotInputRef.current.value = "";
-    if (microInputRef.current) microInputRef.current.value = "";
   }
 
   async function allocate() {
     if (!ballotFile) {
       setStatus("error");
       setErrorMsg("Please upload the Ballot Excel file first.");
-      return;
-    }
-    if (!microFile) {
-      setStatus("error");
-      setErrorMsg("Please upload the Micro-officer Excel file first.");
       return;
     }
     setStatus("allocating");
@@ -395,7 +398,6 @@ export default function Phase3({ context = "municipal" }) {
       } else {
         const form = new FormData();
         form.append("ballots", ballotFile);
-        form.append("microOfficers", microFile);
         form.append("presidingOfficers", JSON.stringify(officers.presiding));
         form.append("pollingOfficers", JSON.stringify(officers.polling));
         const res = await fetch(`${API_BASE}/${context}/phase-3/allocate`, {
@@ -409,7 +411,13 @@ export default function Phase3({ context = "municipal" }) {
         data = await parseJson(res);
       }
       const rows = (Array.isArray(data?.rows) ? data.rows : []).map(normalizeRow);
-      setResult({ summary: normalizeSummary(data, rows), rows });
+      const summary = normalizeSummary(data, rows);
+      setResult({ summary, rows });
+      try {
+        sessionStorage.setItem(PHASE3_STORE_KEY(context), JSON.stringify({ summary, rows, savedAt: Date.now() }));
+      } catch {
+        /* storage may be unavailable */
+      }
       setQuery("");
       setStatusFilter("all");
       setPage(1);
@@ -421,7 +429,7 @@ export default function Phase3({ context = "municipal" }) {
   }
 
   const rows = result?.rows ?? [];
-  const summary = result?.summary ?? { totalBallots: 0, allocated: 0, presidingCount: 0, pollingCount: 0, microOfficers: 0 };
+  const summary = result?.summary ?? { totalBallots: 0, allocated: 0, presidingCount: 0, pollingCount: 0 };
 
   const filtered = useMemo(() => {
     let list = rows;
@@ -431,7 +439,7 @@ export default function Phase3({ context = "municipal" }) {
     const q = query.trim().toLowerCase();
     if (q) {
       list = list.filter((r) =>
-        [r.ballotId, r.psNo, r.presidingOfficer, r.pollingOfficer, r.microOfficer, r.mandal]
+        [r.ballotId, r.psNo, r.presidingOfficer, r.pollingOfficer, r.mandal]
           .join(" ").toLowerCase().includes(q)
       );
     }
@@ -447,7 +455,7 @@ export default function Phase3({ context = "municipal" }) {
 
   const allocatedCount = rows.filter((r) => r._statusKey === "approved").length;
   const pendingCount = rows.length - allocatedCount;
-  const canAllocate = !!ballotFile && !!microFile && status !== "allocating";
+  const canAllocate = !!ballotFile && status !== "allocating";
 
 
   return (
@@ -478,7 +486,7 @@ export default function Phase3({ context = "municipal" }) {
             <div>
               <h1>Phase 3 – Ballot Allocation</h1>
               <p>
-                Upload the Ballot register and Micro-officer list, then allocate ballots to the
+                Upload the Ballot register, then allocate ballots to the
                 Presiding and Polling officers using the backend allocation rules.
               </p>
             </div>
@@ -488,9 +496,9 @@ export default function Phase3({ context = "municipal" }) {
               <InfoIcon />
             </span>
             <p>
-              Presiding &amp; Polling officers are pulled from <strong>Phase 2</strong>. Upload both
-              files and click <strong>Allocate Ballots</strong> — the backend assigns each ballot to
-              an officer and micro-officer per the rules, and the result is shown below.
+              Presiding &amp; Polling officers are pulled from <strong>Phase 2</strong>. Upload the
+              ballot file and click <strong>Allocate Ballots</strong> — the backend assigns each ballot to
+              an officer per the rules, and the result is shown below.
             </p>
           </aside>
         </section>
@@ -518,8 +526,8 @@ export default function Phase3({ context = "municipal" }) {
         </section>
 
 
-        {/* dual upload */}
-        <section className="p3-upload-grid">
+        {/* single upload: ballot register only */}
+        <section className="p3-upload-grid p3-upload-single">
           {/* Ballot upload */}
           <div className="p1-upload-card p3-upload-card">
             <h2 className="p1-card-title">
@@ -559,46 +567,6 @@ export default function Phase3({ context = "municipal" }) {
               </div>
             )}
           </div>
-
-          {/* Micro-officer upload */}
-          <div className="p1-upload-card p3-upload-card">
-            <h2 className="p1-card-title">
-              <span className="p1-card-title-icon">
-                <PeopleIcon />
-              </span>
-              Upload Micro-officer Excel File
-            </h2>
-            <div
-              className={`p1-drop${microDrag ? " is-drag" : ""}`}
-              onClick={() => microInputRef.current?.click()}
-              onDragEnter={(e) => { e.preventDefault(); setMicroDrag(true); }}
-              onDragOver={(e) => { e.preventDefault(); setMicroDrag(true); }}
-              onDragLeave={() => setMicroDrag(false)}
-              onDrop={onMicroDrop}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") microInputRef.current?.click(); }}
-            >
-              <span className="p1-drop-icon">
-                <CloudUpIcon />
-              </span>
-              <strong>Drag &amp; drop the Micro-officer file here</strong>
-              <span className="p1-drop-or">or</span>
-              <button type="button" className="p1-browse" onClick={(e) => { e.stopPropagation(); microInputRef.current?.click(); }}>
-                Browse Files
-              </button>
-              <span className="p1-drop-hint">Supported format: .xlsx&nbsp;&nbsp;|&nbsp;&nbsp;Max file size: 10 MB</span>
-              <input ref={microInputRef} type="file" accept={ACCEPTED.join(",")} onChange={onMicroPick} hidden />
-            </div>
-            {microFile && (
-              <div className="p1-filechip">
-                <span className="p1-filechip-icon"><DocIcon /></span>
-                <span className="p1-filechip-name">{microFile.name}</span>
-                <span className="p1-filechip-size">{(microFile.size / 1024).toFixed(1)} KB</span>
-                <button type="button" className="p1-filechip-clear" onClick={clearMicro} aria-label="Remove file">×</button>
-              </div>
-            )}
-          </div>
         </section>
 
         {/* allocate action */}
@@ -615,7 +583,7 @@ export default function Phase3({ context = "municipal" }) {
             <span className="p1-validate-note-icon">
               <InfoIcon />
             </span>
-            Upload both files, then click <strong>Allocate Ballots</strong>. The backend applies the
+            Upload the ballot file, then click <strong>Allocate Ballots</strong>. The backend applies the
             allocation rules and returns the assigned list, shown below.
           </p>
         </section>
@@ -667,7 +635,7 @@ export default function Phase3({ context = "municipal" }) {
                   <input
                     type="search"
                     className="p1-search"
-                    placeholder="Search ballot, officer, micro-officer…"
+                    placeholder="Search ballot, officer…"
                     value={query}
                     onChange={(e) => { setQuery(e.target.value); setPage(1); }}
                   />
@@ -704,8 +672,8 @@ export default function Phase3({ context = "municipal" }) {
               <div className="p1-stat p1-stat-review">
                 <span className="p1-stat-icon"><BadgeIcon /></span>
                 <div className="p1-stat-meta">
-                  <span className="p1-stat-label">Micro-officers Used</span>
-                  <span className="p1-stat-num">{summary.microOfficers}</span>
+                  <span className="p1-stat-label">Polling Used</span>
+                  <span className="p1-stat-num">{summary.pollingCount}</span>
                 </div>
               </div>
             </div>
@@ -721,7 +689,6 @@ export default function Phase3({ context = "municipal" }) {
                     <th>Polling Station</th>
                     <th>Presiding Officer</th>
                     <th>Polling Officer</th>
-                    <th>Micro-officer</th>
                     <th>Mandal</th>
                     <th>Status</th>
                     <th>Remarks</th>
@@ -730,7 +697,7 @@ export default function Phase3({ context = "municipal" }) {
                 <tbody>
                   {pageRows.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="p1-empty">No matching records.</td>
+                      <td colSpan={8} className="p1-empty">No matching records.</td>
                     </tr>
                   ) : (
                     pageRows.map((r) => (
@@ -748,7 +715,6 @@ export default function Phase3({ context = "municipal" }) {
                             <BadgeIcon /> {r.pollingOfficer}
                           </span>
                         </td>
-                        <td>{r.microOfficer}</td>
                         <td>{r.mandal}</td>
                         <td><StatusBadge row={r} /></td>
                         <td className="p1-remarks">{r.remarks || "—"}</td>

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import "./Phase1.css";
 import "./Training.css";
 import Header from "../components/Header.jsx";
+// Training reads the allocated teams stored by Phase 3 in sessionStorage.
 import { PHASE3_STORE_KEY } from "./Phase3.jsx";
 
 /**
