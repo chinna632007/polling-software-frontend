@@ -1,22 +1,29 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
+import * as XLSX from "xlsx";
 import "./Phase1.css"; // reuse shared chrome (page, shell, breadcrumb, title, stats, table, pagination, search…)
-import "./Phase2.css"; // Phase 2 specifics (partition button, presiding/polling chips + role badges)
+import "./Phase2.css"; // Phase 2 specifics (team formation bar, presiding/polling chips + role badges, Excel export bar)
 import Header from "../components/Header.jsx";
 
 /**
- * Phase 2 – Officer Ranking & Assignment
- * --------------------------------------
- * Consumes the APPROVED employees produced by Phase 1 (Employee Validation) and
- * ranks them. When the user clicks "Partition", the ranked list is split into
- * Presiding Officers (most senior) and Polling Officers (the rest).
+ * Phase 2 – Team Formation
+ * --------------------------
+ * Consumes the APPROVED employees produced by Phase 1 (Employee Validation),
+ * ranks them by seniority, and forms them into polling teams: 1 Presiding
+ * Officer + 5 Polling Officers (1st–5th) per team, each with a unique team
+ * code, an officer role and a duty.
  *
  * Data source: Phase 1 persists its validated result to sessionStorage
- * (`elections:<context>:phase1-result`). If nothing is stored yet, a built-in
- * demo set is used so the page is always viewable.
+ * (`elections:<context>:phase1-result`). If nothing is stored yet, the page
+ * shows an empty state.
+ *
+ * NOTE: the backend Stage 2 formation module cannot run in the browser (it
+ * requires Node's `crypto` and exposes no HTTP route), so the team formation
+ * here mirrors its documented rules and works only with the real Phase 1
+ * approved rows — no mock data.
  */
 
 const STORE_KEY = (context) => `elections:${context}:phase1-result`;
-// Persist the partition so Phase 3 (ballot allocation) can consume the
+// Persist the team formation so Phase 3 (ballot allocation) can consume the
 // Presiding / Polling officers.
 const PHASE2_STORE_KEY = (context) => `elections:${context}:phase2-partition`;
 const PAGE_SIZE = 10;
@@ -165,16 +172,140 @@ function withRanks(rows) {
     .map((r, i) => ({ ...r, rank: i + 1 }));
 }
 
-/**
- * Partition the ranked list. Roughly 1 in every 4 becomes a Presiding Officer
- * (min 1), the rest become Polling Officers — mirroring real staffing ratios.
+/* ------------------------- team formation ---------------------------- */
+/*
+ * Frontend team formation — mirrors the backend Stage 2 rules (read-only).
+ * The backend formation module cannot run in the browser (it requires
+ * Node's `crypto` and is CommonJS) and exposes no HTTP route, so Phase 2
+ * forms teams here from the real Phase 1 approved rows instead of mock
+ * data. Rules mirrored: 1 Presiding Officer + 5 Polling Officers = 6 per
+ * polling party; authorised shortage party = 1 + 4 with 3rd/4th duties
+ * merged into the 3rd Polling Officer; team codes PP-<SHORT>-<NNN>.
+ * Duty wording is the APSEC circular text kept in the backend
+ * stage2.duties module. The circular gives NO duty description for the
+ * Presiding Officer on the verified pages — recorded as null and shown
+ * honestly, nothing invented.
  */
-function partition(rankedRows) {
-  const presidingCount = Math.max(1, Math.round(rankedRows.length / 4));
-  return rankedRows.map((r, i) => ({
-    ...r,
-    role: i < presidingCount ? "Presiding Officer" : "Polling Officer",
-  }));
+
+const TEAM_SIZE = 6;
+
+const FULL_TEAM_ROLES = Object.freeze([
+  "Presiding Officer",
+  "1st Polling Officer",
+  "2nd Polling Officer",
+  "3rd Polling Officer",
+  "4th Polling Officer",
+  "5th Polling Officer",
+]);
+
+/* Shortage 1+4 party: no 4th Polling Officer exists; the 5th keeps its slot. */
+const SHORTAGE_TEAM_ROLES = Object.freeze([
+  "Presiding Officer",
+  "1st Polling Officer",
+  "2nd Polling Officer",
+  "3rd Polling Officer",
+  "5th Polling Officer",
+]);
+
+const TEAM_DUTIES = Object.freeze({
+  "1st Polling Officer": "Voter's identification Officer.",
+  "2nd Polling Officer": "Responsible for Indelible Ink.",
+  "3rd Polling Officer": "Incharge of MPTC Ballot Papers.",
+  "4th Polling Officer": "Incharge of ZPTC Ballot Papers.",
+  "5th Polling Officer": "Ballot Paper Handling Officer.",
+});
+
+/* Merged 3rd + 4th duties for an authorised 1+4 shortage party. */
+const MERGED_SHORTAGE_DUTY_3 =
+  "Incharge of MPTC Ballot Papers and ZPTC Ballot Papers " +
+  "(merged 3rd + 4th Polling Officer duties for 1+4 shortage party).";
+
+/** Roles for a chunk of `size` ranked officers (most senior first). */
+function teamRolesForSize(size) {
+  if (size >= TEAM_SIZE) return FULL_TEAM_ROLES;
+  if (size === TEAM_SIZE - 1) return SHORTAGE_TEAM_ROLES;
+  return FULL_TEAM_ROLES.slice(0, size);
+}
+
+/** Unique team code in the backend's PP-<SHORT>-<NNN> shape. */
+function buildTeamCode(short, n) {
+  return `PP-${short}-${String(n).padStart(3, "0")}`;
+}
+
+/** Duty text for a numbered role, or null for the Presiding Officer. */
+function dutyFor(teamRole, chunkSize) {
+  if (teamRole === "Presiding Officer") return null;
+  if (teamRole === "3rd Polling Officer" && chunkSize === TEAM_SIZE - 1) {
+    return MERGED_SHORTAGE_DUTY_3;
+  }
+  return TEAM_DUTIES[teamRole] ?? null;
+}
+
+/**
+ * Form the ranked list into polling teams. Every officer comes from the
+ * real Phase 1 approved rows (no mock data). Each member keeps a legacy
+ * `role` ("Presiding Officer" / "Polling Officer") so Phase 3's officer
+ * pool keeps working, plus `teamCode`, `teamRole`, `duty` and `teamStatus`.
+ */
+function formTeams(rankedRows, codeShort) {
+  const out = [];
+  const teamCount = Math.ceil(rankedRows.length / TEAM_SIZE);
+  for (let t = 0; t < teamCount; t += 1) {
+    const chunk = rankedRows.slice(t * TEAM_SIZE, t * TEAM_SIZE + TEAM_SIZE);
+    const roles = teamRolesForSize(chunk.length);
+    const teamCode = buildTeamCode(codeShort, t + 1);
+    const teamStatus = chunk.length >= TEAM_SIZE ? "complete" : chunk.length === TEAM_SIZE - 1 ? "shortage" : "incomplete";
+    chunk.forEach((r, i) => {
+      const teamRole = roles[i];
+      out.push({
+        ...r,
+        teamCode,
+        teamIndex: t + 1,
+        teamRole,
+        role: i === 0 ? "Presiding Officer" : "Polling Officer",
+        duty: dutyFor(teamRole, chunk.length),
+        teamStatus,
+      });
+    });
+  }
+  return out;
+}
+
+/** Drop any previous team assignment before re-forming (idempotent re-form). */
+function stripTeam(row) {
+  const clean = { ...row };
+  delete clean.role;
+  delete clean.teamCode;
+  delete clean.teamIndex;
+  delete clean.teamRole;
+  delete clean.duty;
+  delete clean.teamStatus;
+  return clean;
+}
+
+/** Group flat member rows back into team chunks (unique codes), in team order. */
+function groupIntoTeams(rows) {
+  const map = new Map();
+  rows.forEach((r) => {
+    if (!r.teamCode) return;
+    if (!map.has(r.teamCode)) {
+      map.set(r.teamCode, {
+        teamCode: r.teamCode,
+        index: r.teamIndex,
+        status: r.teamStatus,
+        members: [],
+      });
+    }
+    map.get(r.teamCode).members.push(r);
+  });
+  return [...map.values()].sort((a, b) => a.index - b.index);
+}
+
+/** Human label for a team status badge. */
+function teamStatusLabel(team) {
+  if (team.status === "complete") return "Complete · 6/6";
+  if (team.status === "shortage") return "Shortage · 5/6";
+  return `Incomplete · ${team.members.length}/6`;
 }
 
 function pageList(current, total) {
@@ -236,17 +367,78 @@ function RoleBadge({ role }) {
   if (!role || role === "—") {
     return <span className="p1-badge p1-badge-review">Unassigned</span>;
   }
-  return role === "Presiding Officer" ? (
-    <span className="p1-badge p2-badge-presiding">
-      <TrophyIcon /> {role}
-    </span>
-  ) : (
+  if (role === "Presiding Officer") {
+    return (
+      <span className="p1-badge p2-badge-presiding">
+        <TrophyIcon /> {role}
+      </span>
+    );
+  }
+  // Any numbered 1st–5th Polling Officer reads as the polling group.
+  return (
     <span className="p1-badge p2-badge-polling">
       <BadgeIcon /> {role}
     </span>
   );
 }
 
+
+/* ---------------------------- excel export ---------------------------- */
+/*
+ * Team data is shown only in the Excel-style table below. There is a single
+ * Download button: ONE workbook, ONE sheet, with every officer row carrying
+ * its Team Code column. The team-code buttons are filters (they open that
+ * team's officer data in the table), not downloads.
+ */
+
+const EXPORT_COLS = [
+  ["Team Code", 14],
+  ["Role", 24],
+  ["Employee ID", 14],
+  ["Employee Name", 26],
+  ["Designation", 24],
+  ["Work Mandal", 18],
+  ["Team Status", 16],
+  ["Duty", 60],
+];
+
+/** Map one team's members to flat export rows (Excel header order). */
+function teamExportRows(team) {
+  return team.members.map((m) => ({
+    "Team Code": team.teamCode,
+    Role: m.teamRole || m.role,
+    "Employee ID": m.employeeId,
+    "Employee Name": m.employeeName,
+    Designation: m.designation,
+    "Work Mandal": m.workMandal,
+    "Team Status": teamStatusLabel(team),
+    Duty: m.duty ?? "—",
+  }));
+}
+
+/**
+ * Download ALL teams into one workbook with a single sheet. Every row is
+ * tagged with its Team Code so the sheet can be re-grouped/sorted in Excel.
+ */
+function exportTeamsExcel(teams) {
+  const allRows = teams.flatMap(teamExportRows);
+  if (allRows.length === 0) return;
+  const ws = XLSX.utils.json_to_sheet(allRows);
+  ws["!cols"] = EXPORT_COLS.map(([, wch]) => ({ wch }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "All Teams");
+  XLSX.writeFile(wb, "phase2-teams.xlsx");
+}
+
+function DownloadIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 3v12" />
+      <path d="m7 11 5 5 5-5" />
+      <path d="M5 21h14" />
+    </svg>
+  );
+}
 
 /* ------------------------------- page --------------------------------- */
 
@@ -259,25 +451,30 @@ export default function Phase2({ context = "municipal" }) {
   const approvedSource = useMemo(() => loadApproved(context), [context]);
   const hasData = approvedSource.length > 0;
 
-  // rows always carry a rank; role stays "—" until the user partitions.
+  // rows always carry a rank; role stays "—" until the user forms teams.
   const [rows, setRows] = useState(() => withRanks(approvedSource));
   const [partitioned, setPartitioned] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const [roleFilter, setRoleFilter] = useState("all"); // all | presiding | polling
+  const [teamFilter, setTeamFilter] = useState(null); // team code → only that team's officers
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
 
   const presidingCount = rows.filter((r) => r.role === "Presiding Officer").length;
   const pollingCount = rows.filter((r) => r.role === "Polling Officer").length;
+  const groupedTeams = useMemo(() => groupIntoTeams(rows), [rows]);
+  const teamCount = groupedTeams.length;
 
   function runPartition() {
     setBusy(true);
     // brief delay so the split is visibly applied
     setTimeout(() => {
       setRows((prev) => {
-        const next = partition(withRanks(prev.map(({ role, ...r }) => r)));
-        // Share the Presiding / Polling officers with Phase 3 (allocation).
+        const next = formTeams(withRanks(prev.map(stripTeam)), isMunicipal ? "MUN" : "GPN");
+        // Share the team-formed officers with Phase 3 (allocation). The
+        // legacy `role` field keeps Phase 3's officer pool working; the
+        // team fields power the Phase 2 team display.
         try {
           sessionStorage.setItem(PHASE2_STORE_KEY(context), JSON.stringify(next));
         } catch {
@@ -287,15 +484,17 @@ export default function Phase2({ context = "municipal" }) {
       });
       setPartitioned(true);
       setRoleFilter("all");
+      setTeamFilter(null);
       setPage(1);
       setBusy(false);
     }, 450);
   }
 
   function resetPartition() {
-    setRows(withRanks(approvedSource.map(({ role, ...r }) => r)));
+    setRows(withRanks(approvedSource.map(stripTeam)));
     setPartitioned(false);
     setRoleFilter("all");
+    setTeamFilter(null);
     setPage(1);
     try {
       sessionStorage.removeItem(PHASE2_STORE_KEY(context));
@@ -308,14 +507,15 @@ export default function Phase2({ context = "municipal" }) {
     let list = rows;
     if (roleFilter === "presiding") list = list.filter((r) => r.role === "Presiding Officer");
     if (roleFilter === "polling") list = list.filter((r) => r.role === "Polling Officer");
+    if (teamFilter) list = list.filter((r) => r.teamCode === teamFilter);
     const q = query.trim().toLowerCase();
     if (q) {
       list = list.filter((r) =>
-        [r.employeeName, r.employeeId, r.designation].join(" ").toLowerCase().includes(q)
+        [r.employeeName, r.employeeId, r.designation, r.teamCode, r.teamRole].join(" ").toLowerCase().includes(q)
       );
     }
     return list;
-  }, [rows, roleFilter, query]);
+  }, [rows, roleFilter, teamFilter, query]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount);
@@ -351,10 +551,11 @@ export default function Phase2({ context = "municipal" }) {
               <PeopleIcon />
             </span>
             <div>
-              <h1>Phase 2 – Officer Ranking &amp; Assignment</h1>
+              <h1>Phase 2 – Team Formation</h1>
               <p>
                 Approved employees from Phase 1 are ranked by experience &amp; seniority, then
-                partitioned into Presiding Officers and Polling Officers.
+                formed into polling teams — 1 Presiding Officer + 5 Polling Officers per team,
+                each with a unique team code, an officer role and a duty.
               </p>
             </div>
           </div>
@@ -363,9 +564,11 @@ export default function Phase2({ context = "municipal" }) {
               <InfoIcon />
             </span>
             <p>
-              Click <strong>Partition Employees</strong> to divide the approved staff. The most
-              senior become Presiding Officers; the rest become Polling Officers. Use the filter
-              chips to view each group.
+              Click <strong>Form Teams</strong> to group the approved staff into polling
+              teams. The most senior officer of each team becomes its Presiding Officer;
+              the rest take the numbered Polling Officer roles (1st–5th) with their
+              circular duties. Click a <strong>team-code button</strong> below to open that
+              team's officer data, or <strong>Show All Teams</strong> for the full structure.
             </p>
           </aside>
         </section>
@@ -384,10 +587,6 @@ export default function Phase2({ context = "municipal" }) {
             </p>
             <a className="p2-empty-btn" href={`${backHref}/phase-1`}>
               Go to Phase 1 – Employee Validation
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M5 12h14" />
-                <path d="m13 6 6 6-6 6" />
-              </svg>
             </a>
           </section>
         )}
@@ -402,8 +601,8 @@ export default function Phase2({ context = "municipal" }) {
             </span>
             <span className="p2-partition-hint">
               {partitioned
-                ? `Partitioned into ${presidingCount} Presiding & ${pollingCount} Polling Officers.`
-                : "Not yet partitioned — every employee is currently Unassigned."}
+                ? `Formed ${teamCount} team${teamCount === 1 ? "" : "s"} — ${presidingCount} Presiding & ${pollingCount} Polling Officers.`
+                : "Not yet formed — every employee is currently Unassigned."}
             </span>
           </div>
           <div className="p2-partition-actions">
@@ -418,7 +617,7 @@ export default function Phase2({ context = "municipal" }) {
               ) : (
                 <SplitIcon />
               )}
-              {partitioned ? "Re-partition" : "Partition Employees"}
+              {partitioned ? "Re-form Teams" : "Form Teams"}
             </button>
             {partitioned && (
               <button type="button" className="p2-reset-btn" onClick={resetPartition}>
@@ -465,7 +664,7 @@ export default function Phase2({ context = "municipal" }) {
                 <input
                   type="search"
                   className="p1-search"
-                  placeholder="Search by name, Employee ID, designation..."
+                  placeholder="Search by team code, role, name, Employee ID, designation..."
                   value={query}
                   onChange={(e) => { setQuery(e.target.value); setPage(1); }}
                 />
@@ -496,14 +695,79 @@ export default function Phase2({ context = "municipal" }) {
                 <span className="p1-stat-num">{pollingCount}</span>
               </div>
             </div>
-            <div className="p1-stat p1-stat-review">
+            <div className="p1-stat p2-stat-teams">
               <span className="p1-stat-icon"><SplitIcon /></span>
               <div className="p1-stat-meta">
+                <span className="p1-stat-label">Teams Formed</span>
+                <span className="p1-stat-num">{partitioned ? teamCount : "—"}</span>
+              </div>
+            </div>
+            <div className="p1-stat p1-stat-review">
+              <span className="p1-stat-icon"><CheckIcon /></span>
+              <div className="p1-stat-meta">
                 <span className="p1-stat-label">Status</span>
-                <span className="p1-stat-num">{partitioned ? "Partitioned" : "Pending"}</span>
+                <span className="p1-stat-num">{partitioned ? "Formed" : "Pending"}</span>
               </div>
             </div>
           </div>
+
+
+          {/* team-code filter buttons + single-sheet Excel download */}
+          {partitioned && (
+            <div className="p2-export-bar">
+              <div className="p2-export-info">
+                <span className="p2-export-title">
+                  Generated Team Codes <span className="p2-teams-count">({teamCount})</span>
+                  {teamFilter && <span className="p2-team-filter-tag">Viewing {teamFilter}</span>}
+                </span>
+                <span className="p2-export-hint">
+                  Click a team-code button to open that team's officer data in the table below.
+                  Download puts every officer of every team into one Excel sheet, each row tagged
+                  with its Team Code.
+                </span>
+              </div>
+              <div className="p2-export-actions">
+                <div className="p2-export-row">
+                  <button
+                    type="button"
+                    className="p2-export-all"
+                    onClick={() => exportTeamsExcel(groupedTeams)}
+                    disabled={teamCount === 0}
+                  >
+                    <DownloadIcon /> Download All Teams (Excel · single sheet)
+                  </button>
+                  <button
+                    type="button"
+                    className="p2-show-all"
+                    onClick={() => {
+                      setTeamFilter(null);
+                      setPage(1);
+                    }}
+                    disabled={!teamFilter}
+                  >
+                    Show All Teams
+                  </button>
+                </div>
+                <div className="p2-export-chips" role="group" aria-label="Filter officers by team code">
+                  {groupedTeams.map((team) => (
+                    <button
+                      key={team.teamCode}
+                      type="button"
+                      className={`p2-export-chip${teamFilter === team.teamCode ? " is-active" : ""}`}
+                      onClick={() => {
+                        setTeamFilter((cur) => (cur === team.teamCode ? null : team.teamCode));
+                        setPage(1);
+                      }}
+                      title={`Show officers of ${team.teamCode}`}
+                      aria-pressed={teamFilter === team.teamCode}
+                    >
+                      {team.teamCode}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
 
 
           {/* table */}
@@ -512,6 +776,7 @@ export default function Phase2({ context = "municipal" }) {
               <thead>
                 <tr>
                   <th>Rank</th>
+                  <th>Team Code</th>
                   <th>Employee ID</th>
                   <th>Employee Name</th>
                   <th>Designation</th>
@@ -523,14 +788,15 @@ export default function Phase2({ context = "municipal" }) {
                   <th>PH Category</th>
                   <th>Criminal Case / ECI</th>
                   <th>Assigned Role</th>
+                  <th>Duty</th>
                 </tr>
               </thead>
               <tbody>
                 {pageRows.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="p1-empty">
+                    <td colSpan={14} className="p1-empty">
                       {roleFilter !== "all" && !partitioned
-                        ? "Partition the employees first to see assigned roles."
+                        ? "Form the teams first to see assigned roles."
                         : "No matching records."}
                     </td>
                   </tr>
@@ -538,6 +804,7 @@ export default function Phase2({ context = "municipal" }) {
                   pageRows.map((r) => (
                     <tr key={`${r.rank}-${r.employeeId}`}>
                       <td className="p2-rank"><span>{r.rank}</span></td>
+                      <td className="p1-mono p2-teamcode-cell">{r.teamCode ?? "—"}</td>
                       <td className="p1-mono">{r.employeeId}</td>
                       <td className="p1-strong">{r.employeeName}</td>
                       <td>{r.designation}</td>
@@ -548,7 +815,8 @@ export default function Phase2({ context = "municipal" }) {
                       <td>{r.serviceInDistrict}</td>
                       <td>{r.phCategory}</td>
                       <td>{r.criminalCaseEci}</td>
-                      <td><RoleBadge role={r.role} /></td>
+                      <td><RoleBadge role={r.teamRole || r.role} /></td>
+                      <td className="p2-duty-cell">{r.duty ?? "—"}</td>
                     </tr>
                   ))
                 )}
@@ -603,10 +871,6 @@ export default function Phase2({ context = "municipal" }) {
           <div className="p1-next-row">
             <a className="p1-next-btn" href={`${backHref}/phase-3`}>
               Continue to Phase 3 – Ballot Allocation
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M5 12h14" />
-                <path d="m13 6 6 6-6 6" />
-              </svg>
             </a>
           </div>
         )}
