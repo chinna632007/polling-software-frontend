@@ -1,4 +1,4 @@
-/**
+  /**
  * Thin fetch wrapper around the polling-duty backend.
  *
  * All requests are same-origin through the Vite dev proxy ("/api" -> backend,
@@ -115,3 +115,83 @@ export const listBatches = () => request("/imports/batches");
 
 export const getBatchPersonnel = (id) =>
   request(`/imports/batches/${id}/personnel`);
+
+export const getBatchRejected = (id) =>
+  request(`/imports/batches/${id}/rejected`);
+
+/* --------------------------- Polling stations ---------------------------- */
+
+/** Import polling stations (validated JSON array shaped like the 003 schema). */
+export const importStations = (fileName, stations) =>
+  request('/master-data/stations', { method: 'POST', body: { fileName, stations } });
+
+/** List polling stations (paginated server-side; page/limit optional). */
+export const listStations = (params = {}) => {
+  const qs = new URLSearchParams();
+  if (params.batchId) qs.set('batchId', params.batchId);
+  if (params.page) qs.set('page', params.page);
+  if (params.limit) qs.set('limit', params.limit);
+  const q = qs.toString() ? `?${qs}` : '';
+  return request(`/master-data/stations${q}`);
+};
+
+/** List station import batches (kind='polling_stations'). */
+export const listStationBatches = () => request('/master-data/stations/batches');
+
+/* ---------------------------- Randomization ------------------------------ */
+
+/**
+ * Run the full allocation chain (Stage 1 -> Stage 2 + MO -> Stage 3).
+ * Body: { electionConfiguration, designationRules, officeIdOverrides,
+ *         personnelImportBatchId, stationImportBatchId, districtId, seed }.
+ */
+export const runAllocation = (body) =>
+  request('/randomization/run', { method: 'POST', body });
+
+/** Authorised disclosure of a completed Stage 3 mapping (records confirmer). */
+export const publishAllocation = (stage3Run) =>
+  request('/randomization/publish', { method: 'POST', body: { stage3Run } });
+
+/* ----------------------------- Notifications ----------------------------- */
+
+/** Provider/channel configuration status (read-only for all auth'd users). */
+export const notificationChannels = () => request('/notifications/channels');
+
+/** Render per-recipient messages without sending (authority/admin). */
+export const previewNotifications = (body) =>
+  request('/notifications/preview', { method: 'POST', body });
+
+/** Authorised dispatch; requires confirmAllocation: true in body. */
+export const sendNotifications = (body) =>
+  request('/notifications/send', { method: 'POST', body });
+
+/** Delivery-attempt records (authority/admin). */
+export const notificationDeliveries = () => request('/notifications/deliveries');
+
+/* -------------------------------- Reports -------------------------------- */
+
+/** Last allocation run report (authority/admin). */
+export const allocationReport = () => request('/reports/allocation');
+
+/** Import data counts (all authenticated roles). */
+export const summaryReport = () => request('/reports/summary');
+
+/* -------------------------------- Training ------------------------------- */
+
+/** List training sessions (all authenticated users). */
+export const listTrainingSessions = () => request('/training/sessions');
+
+/** Create a training session (authority/admin). */
+export const createTrainingSession = (body) =>
+  request('/training/sessions', { method: 'POST', body });
+
+/** Attendance for one session (all authenticated users). */
+export const trainingAttendance = (id) =>
+  request(`/training/sessions/${id}/attendance`);
+
+/** Mark attendance records (authority/admin). Body: { records: [...] }. */
+export const markTrainingAttendance = (id, records) =>
+  request(`/training/sessions/${id}/attendance`, {
+    method: 'POST',
+    body: { records },
+  });
