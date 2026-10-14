@@ -5,6 +5,7 @@ import Panchayat from "./pages/Panchayat.jsx";
 import Phase1 from "./pages/Phase1.jsx";
 import Phase2 from "./pages/Phase2.jsx";
 import Phase3 from "./pages/Phase3.jsx";
+import Training from "./pages/Training.jsx";
 
 function App() {
   const path = window.location.pathname;
@@ -31,6 +32,14 @@ function App() {
   }
   if (path.startsWith("/elections/panchayat/phase-3")) {
     return <Phase3 context="panchayat" />;
+  }
+
+  // Training – Time Scheduling (slot allocation, teams fetched from Phase 3)
+  if (path.startsWith("/elections/municipal/training")) {
+    return <Training context="municipal" />;
+  }
+  if (path.startsWith("/elections/panchayat/training")) {
+    return <Training context="panchayat" />;
   }
 
   // Municipal elections pages

@@ -4,29 +4,14 @@ import "./Phase1.css"; // reuse shared chrome (page, shell, breadcrumb, title, s
 import "./Phase2.css"; // Phase 2 specifics (team formation bar, presiding/polling chips + role badges, Excel export bar)
 import Header from "../components/Header.jsx";
 
-/**
- * Phase 2 – Team Formation
- * --------------------------
- * Consumes the APPROVED employees produced by Phase 1 (Employee Validation),
- * ranks them by seniority, and forms them into polling teams: 1 Presiding
- * Officer + 5 Polling Officers (1st–5th) per team, each with a unique team
- * code, an officer role and a duty.
- *
- * Data source: Phase 1 persists its validated result to sessionStorage
- * (`elections:<context>:phase1-result`). If nothing is stored yet, the page
- * shows an empty state.
- *
- * NOTE: the backend Stage 2 formation module cannot run in the browser (it
- * requires Node's `crypto` and exposes no HTTP route), so the team formation
- * here mirrors its documented rules and works only with the real Phase 1
- * approved rows — no mock data.
- */
 
 const STORE_KEY = (context) => `elections:${context}:phase1-result`;
-// Persist the team formation so Phase 3 (ballot allocation) can consume the
-// Presiding / Polling officers.
+
 const PHASE2_STORE_KEY = (context) => `elections:${context}:phase2-partition`;
+/** Micro-officer list uploaded on Phase 2, consumed by Phase 3. */
+export const MICRO_STORE_KEY = (context) => `elections:${context}:micro-officers`;
 const PAGE_SIZE = 10;
+const MICRO_ACCEPTED = [".xlsx", ".xls", ".csv"];
 
 /* ------------------------------- icons -------------------------------- */
 
@@ -143,6 +128,36 @@ function pick(obj, ...keys) {
     if (v !== undefined && v !== null && v !== "") return v;
   }
   return undefined;
+}
+
+/** Frontend-only reader: first column of the file = micro-officer names. */
+function readMicroOfficers(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Could not read the selected file."));
+    reader.onload = () => {
+      try {
+        const text = String(reader.result ?? "");
+        const rows = text
+          .split(/\r?\n/)
+          .map((line) =>
+            line
+              .split(/[,;\t]/)
+              .map((c) => c.replace(/^"|"$/g, "").trim())
+              .filter(Boolean)
+          )
+          .filter((cells) => cells.length > 0)
+          .map((cells) => cells[0]);
+        const head = rows[0]?.toLowerCase() ?? "";
+        const data = /micro|officer|name|sl\.?\s*no|s\.?\s*no|employee/i.test(head) ? rows.slice(1) : rows;
+        const names = data.filter((n) => n && n.toLowerCase() !== "nan" && n !== "—");
+        resolve({ fileName: file.name, officers: names });
+      } catch {
+        reject(new Error("Could not parse the micro-officer file. Use a CSV export of the list."));
+      }
+    };
+    reader.readAsText(file);
+  });
 }
 
 function num(v, fallback) {
@@ -461,6 +476,19 @@ export default function Phase2({ context = "municipal" }) {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
 
+  // Micro-officer list (uploaded here, consumed by Phase 3). Restore on reload.
+  const [micro, setMicro] = useState(() => {
+    try {
+      const raw = sessionStorage.getItem(MICRO_STORE_KEY(context));
+      if (!raw) return { fileName: "", officers: [] };
+      const data = JSON.parse(raw);
+      return { fileName: data?.fileName ?? "", officers: Array.isArray(data?.officers) ? data.officers : [] };
+    } catch {
+      return { fileName: "", officers: [] };
+    }
+  });
+  const [microError, setMicroError] = useState("");
+
   const presidingCount = rows.filter((r) => r.role === "Presiding Officer").length;
   const pollingCount = rows.filter((r) => r.role === "Polling Officer").length;
   const groupedTeams = useMemo(() => groupIntoTeams(rows), [rows]);
@@ -498,6 +526,41 @@ export default function Phase2({ context = "municipal" }) {
     setPage(1);
     try {
       sessionStorage.removeItem(PHASE2_STORE_KEY(context));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function handleMicroFile(file) {
+    if (!file) return;
+    setMicroError("");
+    const ext = file.name.includes(".") ? file.name.slice(file.name.lastIndexOf(".")).toLowerCase() : "";
+    if (ext && !MICRO_ACCEPTED.includes(ext)) {
+      setMicroError(`Unsupported file type "${ext}". Upload .xlsx, .xls or .csv.`);
+      return;
+    }
+    try {
+      const parsed = await readMicroOfficers(file);
+      if (parsed.officers.length === 0) {
+        setMicroError(`No officer names found in "${file.name}".`);
+        return;
+      }
+      setMicro(parsed);
+      try {
+        sessionStorage.setItem(MICRO_STORE_KEY(context), JSON.stringify(parsed));
+      } catch {
+        /* storage may be unavailable */
+      }
+    } catch (err) {
+      setMicroError(err.message || "Could not read the micro-officer file.");
+    }
+  }
+
+  function clearMicro() {
+    setMicro({ fileName: "", officers: [] });
+    setMicroError("");
+    try {
+      sessionStorage.removeItem(MICRO_STORE_KEY(context));
     } catch {
       /* ignore */
     }
@@ -554,8 +617,10 @@ export default function Phase2({ context = "municipal" }) {
               <h1>Phase 2 – Team Formation</h1>
               <p>
                 Approved employees from Phase 1 are ranked by experience &amp; seniority, then
+
                 formed into polling teams — 1 Presiding Officer + 5 Polling Officers per team,
                 each with a unique team code, an officer role and a duty.
+
               </p>
             </div>
           </div>
@@ -571,6 +636,76 @@ export default function Phase2({ context = "municipal" }) {
               team's officer data, or <strong>Show All Teams</strong> for the full structure.
             </p>
           </aside>
+        </section>
+
+        {/* micro-officer upload (moved here from Phase 3) */}
+        <section className="p1-upload-grid p2-micro-grid">
+          <div className="p1-upload-card p2-micro-card">
+            <div className="p1-upload-info">
+              <span className="p1-upload-icon">
+                <CloudUpIcon />
+              </span>
+              <div>
+                <h2>Upload Micro-officer List</h2>
+                <p>
+                  Excel / CSV — one officer name per row. Parsed in the browser and sent with the
+                  Phase 3 allocation request.
+                </p>
+              </div>
+            </div>
+            <label className="p1-dropzone">
+              <input
+                type="file"
+                accept={MICRO_ACCEPTED.join(",")}
+                hidden
+                onChange={(e) => {
+                  handleMicroFile(e.target.files?.[0]);
+                  e.target.value = "";
+                }}
+              />
+              <span className="p1-dropzone-icon">
+                <CloudUpIcon />
+              </span>
+              <span className="p1-dropzone-text">
+                {micro.fileName ? (
+                  <>
+                    <strong>{micro.fileName}</strong>
+                    <span>{micro.officers.length} micro-officer(s) loaded — click to replace</span>
+                  </>
+                ) : (
+                  <>
+                    <strong>Upload micro-officer file</strong>
+                    <span>Click to browse or drop (.xlsx, .xls, .csv)</span>
+                  </>
+                )}
+              </span>
+            </label>
+            {microError && (
+              <p className="p1-alert p1-alert-error" role="alert">
+                {microError}
+              </p>
+            )}
+            {micro.officers.length > 0 && (
+              <div className="p2-micro-list">
+                <div className="p2-micro-head">
+                  <span>
+                    <DocIcon /> {micro.officers.length} micro-officer(s) ready for Phase 3
+                  </span>
+                  <button type="button" className="p2-reset-btn" onClick={clearMicro}>
+                    Remove
+                  </button>
+                </div>
+                <ol>
+                  {micro.officers.slice(0, 8).map((name, i) => (
+                    <li key={`${name}-${i}`}>{name}</li>
+                  ))}
+                </ol>
+                {micro.officers.length > 8 && (
+                  <p className="p2-micro-more">+{micro.officers.length - 8} more…</p>
+                )}
+              </div>
+            )}
+          </div>
         </section>
 
         {/* no Phase 1 data yet → prompt the user to complete Phase 1 */}

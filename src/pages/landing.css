@@ -579,4 +579,73 @@ body:has(.landing-page) {
   .page-footer {
     height: 72px;
   }
+
+  .topbar-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    min-width: 140px;
+    padding: 10px 20px;
+    border-radius: 11px;
+    border: 1px solid #dfe9f5;
+    background: linear-gradient(135deg, #1d5fa8, #0d2c56);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 800;
+    letter-spacing: 0.2px;
+    cursor: pointer;
+    box-shadow: 0 8px 18px rgba(9, 47, 104, 0.24);
+    transition: transform 0.18s, box-shadow 0.18s, filter 0.18s;
+    text-decoration: none;
+  }
+
+  .topbar-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 26px rgba(9, 47, 104, 0.30);
+    filter: brightness(1.04);
+  }
+
+  .topbar-btn svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  /* back button (returns to election context home) */
+  .tr-back-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 22px 0 0;
+    padding: 13px 18px;
+    border-radius: 13px;
+    border: 1px solid #dfe9f5;
+    background: #fbfdff;
+    box-shadow: 0 6px 16px rgba(9, 47, 104, 0.06);
+  }
+
+  .tr-back-row a {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    font-size: 15px;
+    font-weight: 800;
+    color: #1d5fa8;
+    text-decoration: none;
+  }
+
+  .tr-back-row a:hover {
+    color: #0d2c56;
+    text-decoration: underline;
+  }
+
+  .tr-back-row svg {
+    width: 19px;
+    height: 19px;
+  }
+
+  @media (max-width: 720px) {
+    .topbar-btn { min-width: 110px; }
+    .tr-back-row { width: 100%; }
+  }
 }

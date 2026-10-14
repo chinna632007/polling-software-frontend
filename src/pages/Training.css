@@ -1,0 +1,97 @@
+/* Training – Time Scheduling: reuses Phase 1/3 chrome, adds slot inputs. */
+.tr-page .page-overlay { display: none; }
+
+.tr-bulk {
+  margin: 2px 0 18px;
+  padding: 16px 18px;
+  border-radius: 14px;
+  border: 1px solid #dbe8f6;
+  background: linear-gradient(120deg, #f4f9ff 0%, #ffffff 70%);
+  box-shadow: 0 8px 20px rgba(9, 47, 104, 0.06);
+}
+
+.tr-bulk-head { margin-bottom: 12px; }
+
+.tr-bulk-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: #1d5fa8;
+}
+
+.tr-bulk-title svg { width: 17px; height: 17px; }
+
+.tr-bulk-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.tr-field { display: flex; flex-direction: column; gap: 6px; }
+
+.tr-label {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #40628a;
+}
+
+.tr-input {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #cfe2f6;
+  background: #fff;
+  font-size: 14px;
+  color: #0d2c56;
+  outline: none;
+  min-width: 0;
+}
+
+.tr-input:focus { border-color: #2f85bb; box-shadow: 0 0 0 3px rgba(47, 133, 187, 0.15); }
+
+.tr-cell-input { width: 100%; min-width: 130px; padding: 8px 10px; font-size: 13.5px; }
+input[type="time"].tr-cell-input { min-width: 110px; }
+
+.tr-apply-btn {
+  padding: 10px 18px;
+  border-radius: 10px;
+  border: 1px solid #2f74b0;
+  background: linear-gradient(135deg, #2f85bb, #073774);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tr-apply-btn:hover { transform: translateY(-1px); }
+
+.tr-members {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  align-items: flex-start;
+}
+
+.tr-micro {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #40628a;
+}
+
+.tr-table td { vertical-align: middle; }
+
+.tr-hint { font-size: 13.5px; font-weight: 600; color: #40628a; }
+
+@media (max-width: 1080px) {
+  .tr-bulk-grid { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 720px) {
+  .tr-bulk-grid { grid-template-columns: 1fr; }
+  .tr-apply-btn { width: 100%; }
+}
