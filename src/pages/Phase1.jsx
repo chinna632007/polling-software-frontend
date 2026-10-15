@@ -561,13 +561,17 @@ export default function Phase1({ context = "municipal" }) {
         }
 
         // Accepted rows -> "Approved"; rejected rows -> "Rejected" (with reasons).
+        // NOTE: the backend denied-list endpoint returns employeeId + reasons +
+        // raw_values; it does NOT return employeeName, so read the name from the
+        // original row (raw_values uses snake_case keys) rather than r.employeeName,
+        // which is always undefined.
         const acceptedRows = personnel.map((p) =>
           normalizeRow({ ...p, status: "Approved" })
         );
         const rejectedRows = rejected.map((r) =>
           normalizeRow({
             employeeId: r.employeeId,
-            employeeName: r.employeeName ?? "",
+            employeeName: r.rawValues?.employee_name ?? r.employeeId ?? "",
             status: "Rejected",
             remarks: Array.isArray(r.reasons)
               ? r.reasons.join(", ")
