@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import "./Phase1.css"; // reuse shared chrome (page, shell, breadcrumb, title, stats, table, pagination, search, upload cards…)
 import "./Phase3.css"; // Phase 3 specifics (allocate button, allocation badges, slot table)
 import Header from "../components/Header.jsx";
+import { allocateBallots } from "../api/client.js";
 
 /**
  * Phase 3 – Ballot Allocation
@@ -27,7 +28,6 @@ import Header from "../components/Header.jsx";
  */
 
 const USE_MOCK = false;
-const API_BASE = "/api";
 const ACCEPTED = [".xlsx", ".xls", ".csv"];
 const PAGE_SIZE = 10;
 const PHASE2_STORE_KEY = (context) => `elections:${context}:phase2-partition`;
@@ -171,14 +171,6 @@ function pick(obj, ...keys) {
 function num(v, fallback) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
-}
-
-async function parseJson(res) {
-  try {
-    return await res.json();
-  } catch {
-    return null;
-  }
 }
 
 function statusKey(status) {
@@ -389,6 +381,13 @@ export default function Phase3({ context = "municipal" }) {
       setErrorMsg("Please upload the Ballot Excel file first.");
       return;
     }
+    // Fail closed: no Phase-2 officers means every ballot would be
+    // "Unassigned" — say so instead of uploading and rendering noise.
+    if (!officers.hasOfficers) {
+      setStatus("error");
+      setErrorMsg("No Presiding/Polling officers found from Phase 2 — complete Phase 2 (Form Teams) first.");
+      return;
+    }
     setStatus("allocating");
     setErrorMsg("");
     try {
@@ -396,19 +395,14 @@ export default function Phase3({ context = "municipal" }) {
       if (USE_MOCK) {
         data = await new Promise((res) => setTimeout(() => res(mockAllocate()), 500));
       } else {
-        const form = new FormData();
-        form.append("ballots", ballotFile);
-        form.append("presidingOfficers", JSON.stringify(officers.presiding));
-        form.append("pollingOfficers", JSON.stringify(officers.polling));
-        const res = await fetch(`${API_BASE}/${context}/phase-3/allocate`, {
-          method: "POST",
-          body: form,
+        // Real backend: base64-JSON via the shared client (credentials ride
+        // along). POST /api/randomization/ballot-allocation parses the
+        // register and allocates the Phase-2 officers to ballots.
+        data = await allocateBallots({
+          file: ballotFile,
+          presidingOfficers: officers.presiding,
+          pollingOfficers: officers.polling,
         });
-        if (!res.ok) {
-          const msg = await parseJson(res);
-          throw new Error(msg?.message || `Allocation failed (${res.status}).`);
-        }
-        data = await parseJson(res);
       }
       const rows = (Array.isArray(data?.rows) ? data.rows : []).map(normalizeRow);
       const summary = normalizeSummary(data, rows);
