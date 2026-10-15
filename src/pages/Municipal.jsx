@@ -246,7 +246,7 @@ const phases = [
     badge: "1",
     title: "Phase 1",
     description:
-      "Initial arrangements, nomination process and preliminary activities.",
+      "validation of the employees weather they are eligible as volunteers to the elections",
     theme: "phase-blue",
     link: "/elections/municipal/phase-1",
     art: <ClipboardArt />,
@@ -256,7 +256,7 @@ const phases = [
     badge: "2",
     title: "Phase 2",
     description:
-      "Campaign period, public awareness and preparation for polling.",
+      "  partationing the employess as presiding, asst presiding and micro observer officers",
     theme: "phase-green",
     link: "/elections/municipal/phase-2",
     art: <BallotBoxArt />,
@@ -265,7 +265,7 @@ const phases = [
     id: "phase-3",
     badge: "3",
     title: "Phase 3",
-    description: "Polling day, vote casting and post-polling activities.",
+    description: "alloocating the ballots to the  each team .",
     theme: "phase-orange",
     link: "/elections/municipal/phase-3",
     art: <BallotListArt />,
@@ -274,7 +274,7 @@ const phases = [
     id: "training",
     badgeIcon: <CalendarIcon />,
     title: "Training Schedule",
-    description: "Training programs for election staff and returning officers.",
+    description: "Training slots allocation for presiding officers and asst presiding officers.",
     theme: "phase-purple",
     link: "/elections/municipal/training",
     art: <TrainingArt />,
@@ -358,7 +358,7 @@ function Municipal() {
             Kakinada
           </h1>
 
-          <h2>Election Process Information</h2>
+          <h2>Election Commission management</h2>
 
           <p className="hero-tagline">
             <span>Stay informed</span>
@@ -391,7 +391,7 @@ function Municipal() {
             <path d="M19 12H5" />
             <path d="m12 19-7-7 7-7" />
           </svg>
-          Back to Municipal Elections
+          Back
         </a>
       </div>
 
