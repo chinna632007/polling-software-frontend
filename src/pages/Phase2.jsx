@@ -1,8 +1,13 @@
 import { useMemo, useRef, useState } from "react";
+import * as XLSX from "xlsx";
 import "./Phase1.css"; // reuse shared chrome (page, shell, breadcrumb, title, stats, table, pagination, search…)
 import "./Phase2.css"; // Phase 2 specifics (team formation bar, presiding/polling chips + role badges, Excel export bar)
 import Header from "../components/Header.jsx";
-import { uploadMicroObservers, listMicroObservers } from "../api/client.js";
+
+import {
+  uploadMicroObservers,
+  listMicroObservers,
+} from "../api/client.js";
 
 /**
  * Phase 2 – Officer Ranking & Assignment

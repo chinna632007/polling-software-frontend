@@ -422,6 +422,63 @@ export default function Phase3({ context = "municipal" }) {
     }
   }
 
+  /** Continue to the Training page (assign venues / generate training orders). */
+  const goToTraining = () => {
+    if (!result || status === "allocating") return;
+    window.location.href = `${backHref}/training`;
+  };
+
+  /** Print ID cards for the currently allocated officers. */
+  const generateIdCard = () => {
+    if (!result || status === "allocating") return;
+    const rows = (result.rows || []).filter((r) => r._statusKey === "approved");
+    const win = window.open("", "_blank");
+    if (!win) return;
+    win.document.write(`
+      <html><head><title>ID Cards - ${contextLabel}</title>
+      <style>
+        body{font-family:sans-serif;padding:20px;color:#111}
+        h1{font-size:18px;margin-bottom:16px;border-bottom:2px solid #1a3c5a;padding-bottom:6px}
+        .sheet{display:flex;flex-wrap:wrap;gap:14px}
+        .card{border:2px solid #1a3c5a;border-radius:8px;padding:10px 12px;width:250px;box-sizing:border-box;background:#fff}
+        .card h2{font-size:14px;margin:0 0 4px 0;color:#1a3c5a}
+        .card p{font-size:12px;margin:2px 0}
+        .tag{font-size:10px;letter-spacing:1px;color:#666;text-transform:uppercase;margin-bottom:6px}
+        @media print{body{padding:0} .card{break-inside:avoid}}
+      </style></head><body>
+      <h1>Polling Officer ID Cards — ${contextLabel}</h1>
+      <div class="sheet">
+      ${rows
+        .map(
+          (r) => `
+        <div class="card">
+          <div class="tag">Polling Duty ID</div>
+          <h2>${escapeHtml(r.ballotId || "")}</h2>
+          <p><strong>Presiding:</strong> ${escapeHtml(r.presidingOfficer || "—")}</p>
+          <p><strong>Polling:</strong> ${escapeHtml(r.pollingOfficer || "—")}</p>
+          <p><strong>Mandal:</strong> ${escapeHtml(r.mandal || "—")}</p>
+          <p><strong>Station:</strong> ${escapeHtml(r.psNo || "—")}</p>
+          <p><strong>Status:</strong> ${escapeHtml(r.status || "Allocated")}</p>
+        </div>`
+        )
+        .join("")}
+      </div>
+      <p style="margin-top:16px;font-size:12px;color:#666">Generated ${rows.length} card(s). Use browser Print (Ctrl+P) and save as PDF.</p>
+      </body></html>
+    `);
+    win.document.close();
+    win.print();
+  };
+
+  function escapeHtml(s) {
+    return String(s ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
   const rows = result?.rows ?? [];
   const summary = result?.summary ?? { totalBallots: 0, allocated: 0, presidingCount: 0, pollingCount: 0 };
 
@@ -670,6 +727,35 @@ export default function Phase3({ context = "municipal" }) {
                   <span className="p1-stat-num">{summary.pollingCount}</span>
                 </div>
               </div>
+            </div>
+
+            {/* post-allocation actions: continue to training / generate ID cards */}
+            <div className="p3-next-actions">
+              <button
+                type="button"
+                className="p3-next-btn"
+                onClick={goToTraining}
+                disabled={!result || status === "allocating"}
+              >
+                <LinkIcon />
+                {" "}
+                Continue to Training
+              </button>
+              <button
+                type="button"
+                className="p3-idcard-btn"
+                onClick={generateIdCard}
+                disabled={!result || status === "allocating"}
+              >
+                <DocIcon />
+                {" "}
+                Generate ID Card
+              </button>
+              {result && status === "done" && (
+                <span className="p3-next-note">
+                  Allocation saved — proceed to training to assign venues and generate orders.
+                </span>
+              )}
             </div>
 
 
