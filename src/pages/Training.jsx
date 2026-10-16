@@ -20,6 +20,7 @@ import {
   uploadTrainingLocations,
   uploadTrainingSessions,
   listTrainingLocations,
+  wipeAllTrainingOrders,
 } from "../api/client.js";
 
 const PAGE_SIZE = 20;
@@ -45,6 +46,13 @@ function UsersIcon() {
 export default function Training() {
   const [batchGroup, setBatchGroup] = useState("PO");
   const [batches, setBatches] = useState([]);
+
+  // Derive the election context (municipal / panchayat) from the route so the
+  // back button returns to the right election home page.
+  const path = window.location.pathname;
+  const isMunicipal = path.startsWith("/elections/municipal");
+  const contextLabel = isMunicipal ? "Municipal" : "Panchayat";
+  const backHref = isMunicipal ? "/elections/municipal" : "/elections/panchayat";
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -62,6 +70,8 @@ export default function Training() {
   const [generating, setGenerating] = useState(false);
   const [generateMsg, setGenerateMsg] = useState(null);
   const [zipping, setZipping] = useState(false);
+  const [wiping, setWiping] = useState(false);
+  const [wipeMsg, setWipeMsg] = useState(null);
   const [uploadingLoc, setUploadingLoc] = useState(false);
   const [locMsg, setLocMsg] = useState(null);
   const [locCount, setLocCount] = useState(null);
@@ -122,6 +132,27 @@ export default function Training() {
       setError(e.message || "Allocation failed");
     } finally {
       setAllocating(false);
+    }
+  };
+
+  const runWipeAll = async () => {
+    try {
+      setError(null);
+      setWipeMsg(null);
+      setWiping(true);
+      const data = await wipeAllTrainingOrders();
+      setWipeMsg(
+        `Wiped ${data.truncated?.length ?? 0} table(s) (users + roles kept). Reload to see clean state.`
+      );
+      setBatches([]);
+      setMembers([]);
+      setOrders([]);
+      setOrdersTotal(0);
+      setSelectedBatchId(null);
+    } catch (e) {
+      setError(e.message || "Wipe failed");
+    } finally {
+      setWiping(false);
     }
   };
 
@@ -271,6 +302,16 @@ export default function Training() {
       <Header />
 
       <main className="p1-content">
+      <div className="tr-back-row">
+        <a
+          href={backHref}
+          aria-label={`Back to ${contextLabel} Elections`}
+          title={`Back to ${contextLabel} Elections`}
+        >
+          <ChevronLeft />
+          Back to {contextLabel} Elections
+        </a>
+      </div>
         <section className="p1-card" aria-label="Training orders">
           <div className="p1-card-head">
             <span className="p1-card-title">Training orders (PO / APO)</span>
@@ -317,8 +358,27 @@ export default function Training() {
                 Training sessions loaded: <strong>{sessCount}</strong>.
               </span>
             )}
+            <span className="tr-hint" style={{ marginLeft: 10, fontSize: 11, opacity: 0.8 }}>
+              ⚠ Each upload replaces that table's existing rows (re-upload supersedes).
+            </span>
             <button type="button" className="p1-mini-btn" disabled={allocating} onClick={runAllocate}>
               {allocating ? "Allocating…" : "Allocate (wipe + redo)"}
+            </button>
+            <button
+              type="button"
+              className="p1-mini-btn"
+              disabled={wiping}
+              onClick={() => {
+                if (
+                  !window.confirm(
+                    'This will DELETE all data from every table except users and roles (personnel, stations, training, randomization results, etc.). This cannot be undone. Continue?'
+                  )
+                )
+                  return;
+                runWipeAll();
+              }}
+            >
+              {wiping ? "Wiping…" : "Wipe all data (keep users/roles)"}
             </button>
             <button type="button" className="p1-mini-btn" disabled={generating} onClick={() => runGenerate("PO")}>
               {generating ? "Generating…" : "Generate PO orders"}
@@ -350,6 +410,7 @@ export default function Training() {
           </div>
           {allocateMsg && <div className="p1-note" role="status">{allocateMsg}</div>}
           {generateMsg && <div className="p1-note" role="status">{generateMsg}</div>}
+          {wipeMsg && <div className="p1-note" role="status">{wipeMsg}</div>}
           {error && <div className="tr-error">{error}</div>}
 
           <div className="tr-table-wrap tr-orders-wrap">
@@ -378,6 +439,7 @@ export default function Training() {
                     <td className="tr-cell">{o.employee_id || "—"}</td>
                     <td className="tr-cell">{o.employee_name || "—"}</td>
                     <td className="tr-cell">{o.mandal || "—"}</td>
+                    <td className="tr-cell">{o.venue_code || "—"}</td>
                     <td className="tr-cell">
                       <span className={`tr-venue-badge ${o.venue ? "tr-venue-assigned" : "tr-venue-pending"}`}>
                         {o.venue || "Not assigned"}
@@ -424,10 +486,10 @@ export default function Training() {
                 setMembers([]);
                 loadBatches(g);
               }}
-              aria-label="PO or APO batches"
+              aria-label="PO or APO training phase"
             >
-              <option value="PO">PO</option>
-              <option value="APO">APO</option>
+              <option value="PO">PO Training Phase</option>
+              <option value="APO">APO Training Phase</option>
             </select>
             <span className="tr-hint">Grouped by duty mandal (not work/native). Max 100 per batch.</span>
           </div>

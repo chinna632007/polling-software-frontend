@@ -322,6 +322,10 @@ export const editPersonnel = (id, body) =>
 export const allocateTrainingOrders = () =>
   request('/imports/training-orders/allocate', { method: 'POST', body: {} });
 
+/** Wipe every non-auth table (keeps users + roles). POST /imports/training-orders/wipe-all-data. */
+export const wipeAllTrainingOrders = () =>
+  request('/imports/training-orders/wipe-all-data', { method: 'POST', body: {} });
+
 /** Generate one DOCX per officer for PO or APO (built-in templates). Body: { group }. */
 export const generateTrainingOrders = (group) =>
   request('/imports/training-orders/generate', {

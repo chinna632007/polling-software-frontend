@@ -510,3 +510,34 @@ input[type="time"].tr-cell-input { min-width: 110px; }
   .tr-bulk-grid { grid-template-columns: 1fr; }
   .tr-apply-btn { width: 100%; }
 }
+
+/* Back button (returns to the election context home page). */
+.tr-back-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px 0;
+  padding: 13px 18px;
+  border-radius: 13px;
+  border: 1px solid #dfe9f5;
+  background: #fbfdff;
+  box-shadow: 0 6px 16px rgba(9, 47, 104, 0.06);
+}
+
+.tr-back-row a {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 15px;
+  font-weight: 800;
+  color: #1d5fa8;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.tr-back-row a:hover {
+  color: #0d2c56;
+  text-decoration: underline;
+}
+
+.tr-back-row svg { width: 17px; height: 17px; }
