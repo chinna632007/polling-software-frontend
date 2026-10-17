@@ -159,6 +159,13 @@
   white-space: nowrap;
 }
 
+.p2-badge-apo {
+  color: #8a4b00;
+  background: #ffeecd;
+  border: 1px solid #f5c86e;
+  white-space: nowrap;
+}
+
 /* ----------------------------- stat cards ----------------------------- */
 
 .p2-stat-presiding {

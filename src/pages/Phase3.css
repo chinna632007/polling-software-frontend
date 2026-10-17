@@ -94,6 +94,24 @@
   color: #6b829c;
 }
 
+/* Team-data pill tones (Presiding / APO / NA) shown below the Phase 3 table */
+.p3-officer-pill.p3-tone-presiding {
+  border-color: #17703c;
+  background: #eef7f0;
+}
+.p3-officer-pill.p3-tone-apo {
+  border-color: #a97b12;
+  background: #fdf1d6;
+}
+.p3-officer-pill.p3-tone-opo {
+  border-color: #1d5fa8;
+  background: #e8f1fb;
+}
+.p3-officer-pill.p3-tone-na {
+  border-color: #8a6d2f;
+  background: #fff8e9;
+}
+
 .p3-officers-warn {
   margin: 10px 0 0;
   font-size: 13px;

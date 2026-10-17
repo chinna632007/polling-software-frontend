@@ -184,23 +184,24 @@ const TEAM_SIZE = 6;
 
 const FULL_TEAM_ROLES = Object.freeze([
   "Presiding Officer",
+  "Assistant Polling Officer",
   "1st Polling Officer",
   "2nd Polling Officer",
   "3rd Polling Officer",
   "4th Polling Officer",
-  "5th Polling Officer",
 ]);
 
-/* Shortage 1+4 party: no 4th Polling Officer exists; the 5th keeps its slot. */
+/* Shortage 1+4 party: no 4th/5th Polling Officer exists; OPO slots are 1st–3rd only. */
 const SHORTAGE_TEAM_ROLES = Object.freeze([
   "Presiding Officer",
+  "Assistant Polling Officer",
   "1st Polling Officer",
   "2nd Polling Officer",
   "3rd Polling Officer",
-  "5th Polling Officer",
 ]);
 
 const TEAM_DUTIES = Object.freeze({
+  "Assistant Polling Officer": "Assistant to the Presiding Officer (non-gazetted School Assistant).",
   "1st Polling Officer": "Voter's identification Officer.",
   "2nd Polling Officer": "Responsible for Indelible Ink.",
   "3rd Polling Officer": "Incharge of MPTC Ballot Papers.",
@@ -235,10 +236,15 @@ function dutyFor(teamRole, chunkSize) {
 }
 
 /**
- * Form the ranked list into polling teams. Every officer comes from the
- * real Phase 1 approved rows (no mock data). Each member keeps a legacy
- * `role` ("Presiding Officer" / "Polling Officer") so Phase 3's officer
- * pool keeps working, plus `teamCode`, `teamRole`, `duty` and `teamStatus`.
+ * Form the ranked list into polling teams. Team order is ALWAYS:
+ *   slot 0 = PO (Presiding Officer),
+ *   slot 1 = APO (Assistant Polling Officer),
+ *   slots 2+ = OPOs (Polling Officers).
+ * Members are NEVER re-sorted downstream — the frontend must render
+ * members in stored array order so PO shows 1st, APO 2nd, OPOs after.
+ * Each member keeps a legacy `role` ("Presiding Officer" / "Polling Officer")
+ * so Phase 3's officer pool keeps working, plus `teamCode`, `teamRole`,
+ * `duty` and `teamStatus`.
  */
 function formTeams(rankedRows, codeShort) {
   const out = [];
@@ -367,7 +373,16 @@ function RoleBadge({ role }) {
       </span>
     );
   }
-  // Any numbered 1st–5th Polling Officer reads as the polling group.
+  if (role === "Assistant Polling Officer") {
+    // APO is displayed distinctly: NON-gazetted School Assistant at team slot 1,
+    // never lumped with the OPO ("normal polling officer") group.
+    return (
+      <span className="p1-badge p2-badge-apo">
+        <BadgeIcon /> {role}
+      </span>
+    );
+  }
+  // Any numbered 1st–4th Polling Officer reads as the OPO polling group.
   return (
     <span className="p1-badge p2-badge-polling">
       <BadgeIcon /> {role}

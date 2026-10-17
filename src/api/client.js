@@ -115,3 +115,7 @@ export const listBatches = () => request("/imports/batches");
 
 export const getBatchPersonnel = (id) =>
   request(`/imports/batches/${id}/personnel`);
+
+// Training: PO / APO separate allocation (work_mandal based).
+export const getTrainingPAApoBatches = () =>
+  request(`/imports/training/po-apo-batches`);
