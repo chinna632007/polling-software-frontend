@@ -219,3 +219,119 @@
   }
 }
 
+/* -------------------------- post-allocation actions ----------------------- */
+
+.p3-next-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 16px 0 2px;
+  padding-top: 10px;
+  border-top: 1px solid #e3ecf5;
+}
+
+.p3-next-actions .p3-next-btn,
+.p3-next-actions .p3-idcard-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid #c9d6e6;
+  background: #ffffff;
+  color: #1a3c5a;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.p3-next-actions .p3-next-btn:hover:not(:disabled) {
+  border-color: #1a3c5a;
+  background: #f4f7fb;
+}
+
+.p3-next-actions .p3-idcard-btn:hover:not(:disabled) {
+  border-color: #7a5a00;
+  background: #fdf6e7;
+}
+
+.p3-next-actions .p3-next-btn:disabled,
+.p3-next-actions .p3-idcard-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  border-color: #d8e2ec;
+  color: #9aa7b4;
+}
+
+.p3-next-actions .p3-next-note {
+  margin-left: 12px;
+  font-size: 12px;
+  color: #4a6582;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .p3-next-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .p3-next-actions .p3-next-btn,
+  .p3-next-actions .p3-idcard-btn {
+    width: 100%;
+    justify-content: center;
+  }
+  .p3-next-actions .p3-next-note {
+    margin-left: 0;
+    margin-top: 6px;
+    text-align: center;
+  }
+}
+
+
+/* ---------------- Duty allocation (Stage 2 -> Stage 3) -------------------
+ * Verification table: one row per team with its Stage-3 station allotment,
+ * member list, and the per-team notification send button. Button/note styles
+ * are scoped here (Training.css defines the originals but is not imported by
+ * this page — keeps this page self-contained).
+ */
+.p3-duty {
+  margin-top: 18px;
+}
+
+.p3-duty .p1-mini-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 14px;
+  border-radius: 10px;
+  border: 1px solid #cfe2f6;
+  background: #fff;
+  color: #092f68;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+}
+.p3-duty .p1-mini-btn:hover:not(:disabled) {
+  background: #eef6ff;
+  border-color: #2f85bb;
+  color: #073774;
+  box-shadow: 0 2px 6px rgba(47, 133, 187, 0.12);
+}
+.p3-duty .p1-mini-btn:active:not(:disabled) { transform: translateY(0.5px); }
+.p3-duty .p1-mini-btn:disabled { opacity: 0.6; cursor: not-allowed; filter: grayscale(0.35); }
+
+.p3-duty .p1-note {
+  padding: 7px 12px;
+  border-radius: 10px;
+  background: #eef6ff;
+  color: #092f68;
+  font-size: 12.5px;
+  font-weight: 600;
+  border: 1px solid #bfe3fd;
+  margin-top: 6px;
+  line-height: 1.45;
+}

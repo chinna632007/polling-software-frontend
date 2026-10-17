@@ -135,6 +135,45 @@ export function uploadMicroObservers(file, signal) {
   );
 }
 
+/** Upload training-locations workbook (venues for training batches). */
+export function uploadTrainingLocations(file, signal) {
+  return fileToBase64(file).then((dataBase64) =>
+    request(
+      "/imports/training-locations",
+      { method: "POST", body: { fileName: file.name, dataBase64 }, signal }
+    )
+  );
+}
+
+/** Upload training-*sessions* workbook (schedule; title, session_type, mandal, venue, ...). */
+export function uploadTrainingSessions(file, signal) {
+  return fileToBase64(file).then((dataBase64) =>
+    request(
+      "/imports/training-sessions",
+      { method: "POST", body: { fileName: file.name, dataBase64 }, signal }
+    )
+  );
+}
+
+/** Upload mandal-adjacency workbook (Mandal_Name, Near_Mandal_Names).
+ * Replaces the whole table — drives near-mandal posting (Stage 2 + Stage 3). */
+export function uploadMandalAdjacency(file, signal) {
+  return fileToBase64(file).then((dataBase64) =>
+    request(
+      "/imports/mandal-adjacency",
+      { method: "POST", body: { fileName: file.name, dataBase64 }, signal }
+    )
+  );
+}
+
+/** Read the current mandal-adjacency table (count + rows). */
+export function listMandalAdjacency(signal) {
+  return request("/imports/mandal-adjacency", { method: "GET", signal });
+}
+
+/** List training locations (venues). */
+export const listTrainingLocations = () => request("/imports/training-locations");
+
 /** List uploaded Micro Observers (authority/admin/staff). */
 export const listMicroObservers = () => request("/imports/micro-observers");
 
@@ -211,6 +250,17 @@ export const sendNotifications = (body) =>
 /** Delivery-attempt records (authority/admin). */
 export const notificationDeliveries = () => request('/notifications/deliveries');
 
+/**
+ * Send the Stage-3 duty notification for ONE team (authority/admin).
+ * The server loads members + mobiles from the frozen roster, so the body
+ * only carries the team code plus the explicit confirmation flag.
+ */
+export const sendTeamNotification = (teamCode) =>
+  request('/notifications/send-team', {
+    method: 'POST',
+    body: { teamCode, confirmAllocation: true },
+  });
+
 /* -------------------------------- Reports -------------------------------- */
 
 /** Last allocation run report (authority/admin). */
@@ -284,31 +334,32 @@ export const deleteOrderAssignment = (id) =>
 export const generateOrder = (id) =>
   request(`/imports/order-assignments/${id}/generate`, { method: 'POST' });
 
-/** Generate the order .docx AND email it as an attachment. */
-export const generateAndSendOrder = (id) =>
-  request(`/imports/order-assignments/${id}/generate-and-send`, { method: 'POST' });
-
 /** Edit a personnel record (authority/admin). Allow-listed fields only. */
 export const editPersonnel = (id, body) =>
   request(`/imports/personnel/${id}`, { method: 'PATCH', body });
 
 /* ----------------------------- Training orders ---------------------------- */
-/* PO/APO training allocation + DOCX training-order generation (migration 011). */
+/* PO/APO separate tables (migration 013). Built-in templates + ZIP download. */
 
-/** Allocate separate PO/APO training batches from the last run (authority/admin). Body: {} */
+/** Wipe + allocate PO/APO batches from last Stage-2 run (duty mandal; MO skipped). */
 export const allocateTrainingOrders = () =>
   request('/imports/training-orders/allocate', { method: 'POST', body: {} });
 
-/**
- * Print (generate + store) one training order DOCX (authority/admin).
- * Body: { templateBase64, trainingGroup: 'PO'|'APO', mandal?, venue?,
- *   dateTime?, scheduledAt?, batchId?, designatedOfficers?, totalOfficers? }.
- * Returns { ok, order, document } — download via downloadTrainingOrder(order.id).
- */
-export const printTrainingOrder = (body) =>
-  request('/imports/training-orders/print', { method: 'POST', body });
+/** Wipe every non-auth table (keeps users + roles). POST /imports/training-orders/wipe-all-data. */
+export const wipeAllTrainingOrders = () =>
+  request('/imports/training-orders/wipe-all-data', { method: 'POST', body: {} });
 
-/** List generated training orders (authority/admin). Filters: group PO|APO, status, page, perPage. */
+/** Generate one DOCX per officer for PO or APO (built-in templates). Body: { group }. */
+export const generateTrainingOrders = (group) =>
+  request('/imports/training-orders/generate', {
+    method: 'POST',
+    body: { group },
+  });
+
+/** @deprecated use generateTrainingOrders */
+export const printTrainingOrder = (body) =>
+  generateTrainingOrders(body?.trainingGroup || body?.group || 'PO');
+
 export const listTrainingOrders = (params) => {
   const q = new URLSearchParams();
   for (const [k, v] of Object.entries(params || {})) {
@@ -318,11 +369,43 @@ export const listTrainingOrders = (params) => {
   return request(`/imports/training-orders${qs ? `?${qs}` : ''}`);
 };
 
-/** Download one training order's .docx (authority/admin). Triggers a browser save. */
-export async function downloadTrainingOrder(id) {
+export const listPoApoBatches = (group) =>
+  request(`/imports/training-orders/batches?group=${encodeURIComponent(group)}`);
+
+export const getPoApoBatchMembers = (group, id) =>
+  request(`/imports/training-orders/batches/${id}/members?group=${encodeURIComponent(group)}`);
+
+export const getPoApoBatchLocations = (group, id) =>
+  request(`/imports/training-orders/batches/${id}/locations?group=${encodeURIComponent(group)}`);
+
+export const assignPoApoBatchLocation = (group, id, locationId) =>
+  request(`/imports/training-orders/batches/${id}/location`, {
+    method: 'PATCH',
+    body: { group, locationId },
+  });
+
+async function triggerBlobDownload(res, fallbackName) {
+  const blob = await res.blob();
+  const disposition = res.headers.get('content-disposition') || '';
+  const match = /filename="([^"]+)"/.exec(disposition);
+  const fileName = match ? match[1] : fallbackName;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  return { ok: true, fileName };
+}
+
+/** Download ZIP of generated orders. group: 'PO' | 'APO' | 'ALL' */
+export async function downloadTrainingOrdersZip(group = 'ALL') {
   let res;
   try {
-    res = await fetch(`${API_BASE}/imports/training-orders/${id}/download`, {
+    const q = encodeURIComponent(group || 'ALL');
+    res = await fetch(`${API_BASE}/imports/training-orders/download-zip?group=${q}`, {
       credentials: 'include',
     });
   } catch {
@@ -333,21 +416,30 @@ export async function downloadTrainingOrder(id) {
     try {
       const data = JSON.parse(await res.text());
       if (data && (data.error || data.message)) message = data.error || data.message;
-    } catch { /* non-JSON error body */ }
+    } catch { /* non-JSON */ }
     throw new ApiError(message, res.status);
   }
-  const blob = await res.blob();
-  const fallback = `training-order-${id}.docx`;
-  const disposition = res.headers.get('content-disposition') || '';
-  const match = /filename="([^"]+)"/.exec(disposition);
-  const fileName = match ? match[1] : fallback;
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fileName;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
-  return { ok: true, fileName };
+  return triggerBlobDownload(res, `training-orders-${group || 'ALL'}.zip`);
+}
+
+/** Single order DOCX. */
+export async function downloadTrainingOrder(group, id) {
+  let res;
+  try {
+    res = await fetch(
+      `${API_BASE}/imports/training-orders/${encodeURIComponent(group)}/${id}/download`,
+      { credentials: 'include' }
+    );
+  } catch {
+    throw new ApiError('Cannot reach the server. Is the backend running?', 0);
+  }
+  if (!res.ok) {
+    let message = `Download failed (${res.status})`;
+    try {
+      const data = JSON.parse(await res.text());
+      if (data && (data.error || data.message)) message = data.error || data.message;
+    } catch { /* non-JSON */ }
+    throw new ApiError(message, res.status);
+  }
+  return triggerBlobDownload(res, `training-order-${id}.docx`);
 }
