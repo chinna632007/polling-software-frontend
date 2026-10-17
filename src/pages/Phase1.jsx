@@ -1,8 +1,8 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import "./landing.css";
 import "./Phase1.css";
 import Header from "../components/Header.jsx";
-import { uploadPersonnel, getBatchPersonnel } from "../api/client.js";
+import { uploadPersonnel, getBatchPersonnel, getBatchRejected, listBatches } from "../api/client.js";
 
 /**
  * Phase 1 – Employee Validation
@@ -438,6 +438,62 @@ export default function Phase1({ context = "municipal" }) {
 
   const inputRef = useRef(null);
 
+  // Fix 3 (team decision 2026-10-14): on load, show STORED data if it exists —
+  // latest batch's accepted + rejected rows straight from the DB. If nothing is
+  // stored (or reads fail), stay in the empty upload state. Never fake a table.
+  useEffect(() => {
+    if (USE_MOCK) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await listBatches();
+        const batches = Array.isArray(data?.batches) ? data.batches : [];
+        const latest = batches.find((b) => (b.total_rows ?? 0) > 0);
+        if (!latest || cancelled) return;
+
+        const [detail, rejData] = await Promise.all([
+          getBatchPersonnel(latest.id),
+          getBatchRejected(latest.id).catch(() => ({ rejected: [] })),
+        ]);
+        if (cancelled) return;
+
+        const personnel = Array.isArray(detail?.personnel) ? detail.personnel : [];
+        const rejected = Array.isArray(rejData?.rejected) ? rejData.rejected : [];
+        // Option B: batch claims stored rows but reads return none -> stay empty
+        // (admin re-uploads); we never render fake data.
+        if ((latest.accepted_rows ?? 0) > 0 && personnel.length === 0) return;
+
+        const acceptedRows = personnel.map((p) =>
+          normalizeRow({ ...p, status: "Approved" })
+        );
+        const rejectedRows = rejected.map((r) =>
+          normalizeRow({
+            employeeId: r.employeeId,
+            employeeName: r.rawValues?.employee_name ?? "",
+            status: "Rejected",
+            remarks: Array.isArray(r.reasons)
+              ? r.reasons.join(", ")
+              : String(r.reasons ?? "—"),
+          })
+        );
+        const rows = [...acceptedRows, ...rejectedRows];
+        const summary = {
+          total: latest.total_rows ?? rows.length,
+          approved: latest.accepted_rows ?? acceptedRows.length,
+          rejected: latest.rejected_rows ?? rejectedRows.length,
+          needsReview: 0,
+        };
+        setResult({ summary, rows, batchId: latest.id });
+        setStatus("done");
+      } catch {
+        // No stored data reachable -> leave the empty upload state (Option B).
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   function validateAndSet(next) {
     if (!next) return;
     const lower = next.name.toLowerCase();
@@ -482,27 +538,40 @@ export default function Phase1({ context = "municipal" }) {
         rows = (Array.isArray(data.rows) ? data.rows : []).map(normalizeRow);
         summary = normalizeSummary(data, rows);
       } else {
-        // Real backend: 1) upload the workbook, 2) fetch accepted personnel.
-        // The backend stamps its own batch id; we never send our own.
+        // Real backend: 1) upload the workbook (validate + store accepted AND
+        // rejected rows in one transaction), 2) read the STORED rows back from
+        // the DB. Option B (fail-closed): if the DB read fails OR returns
+        // nothing while the batch claims rows, throw and show the error —
+        // never render local-file rows as "Approved" (old fake-green bug).
         const upload = await uploadPersonnel(file);
         // Backend returns the id as batch.id (also tolerate batch.batchId).
         const batchId = upload?.batch?.id ?? upload?.batch?.batchId;
         const rejected = Array.isArray(upload?.rejected) ? upload.rejected : [];
+        if (!batchId) {
+          throw new Error('Upload succeeded but returned no batch id — data was NOT saved. Please re-upload.');
+        }
 
-        let personnel = [];
-        if (batchId) {
-          const detail = await getBatchPersonnel(batchId);
-          personnel = Array.isArray(detail?.personnel) ? detail.personnel : [];
+        const detail = await getBatchPersonnel(batchId);
+        const personnel = Array.isArray(detail?.personnel) ? detail.personnel : [];
+        const expectedAccepted = upload?.batch?.acceptedRows ?? personnel.length;
+        if (expectedAccepted > 0 && personnel.length === 0) {
+          throw new Error(
+            `Batch ${batchId} reports ${expectedAccepted} accepted row(s) but the stored data could not be read — showing nothing instead of fake data. Please re-upload.`
+          );
         }
 
         // Accepted rows -> "Approved"; rejected rows -> "Rejected" (with reasons).
+        // NOTE: the backend denied-list endpoint returns employeeId + reasons +
+        // raw_values; it does NOT return employeeName, so read the name from the
+        // original row (raw_values uses snake_case keys) rather than r.employeeName,
+        // which is always undefined.
         const acceptedRows = personnel.map((p) =>
           normalizeRow({ ...p, status: "Approved" })
         );
         const rejectedRows = rejected.map((r) =>
           normalizeRow({
             employeeId: r.employeeId,
-            employeeName: r.employeeName ?? "",
+            employeeName: r.rawValues?.employee_name ?? r.employeeId ?? "",
             status: "Rejected",
             remarks: Array.isArray(r.reasons)
               ? r.reasons.join(", ")

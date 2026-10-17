@@ -143,6 +143,52 @@
   box-shadow: 0 8px 18px rgba(83, 74, 183, 0.28);
 }
 
+.p2-chip-micro {
+  color: #9a6a0a;
+  border-color: #f3dfae;
+  background: #fef9ec;
+}
+.p2-chip-micro.is-active {
+  background: linear-gradient(135deg, #e0a92e, #9a6a0a);
+  border-color: #9a6a0a;
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(154, 106, 10, 0.28);
+}
+
+.p2-chip-sub {
+  color: #2f6f9e;
+  border-color: #bfe0f3;
+  background: #f0f8fe;
+}
+.p2-chip-sub.is-active {
+  background: linear-gradient(135deg, #4aa3dd, #2f6f9e);
+  border-color: #2f6f9e;
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(47, 111, 158, 0.28);
+}
+
+/* ------------------------- MO upload bar ------------------------------ */
+
+.p2-mo-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 4px 0 22px;
+  padding: 16px 20px;
+  border-radius: 14px;
+  border: 1px solid #f3dfae;
+  background: linear-gradient(120deg, #fef9ec 0%, #ffffff 70%);
+  box-shadow: 0 8px 20px rgba(154, 106, 10, 0.08);
+}
+
+.p2-partition-warn {
+  font-size: 13px;
+  font-weight: 700;
+  color: #b03a2e;
+}
+
 /* --------------------------- role badges ------------------------------ */
 
 .p2-badge-presiding {
@@ -163,6 +209,17 @@
   color: #8a4b00;
   background: #ffeecd;
   border: 1px solid #f5c86e;
+.p2-badge-mo {
+  color: #8a5f06;
+  background: #fdf0d0;
+  border: 1px solid #f0d48a;
+  white-space: nowrap;
+}
+
+.p2-badge-sub {
+  color: #2b6a97;
+  background: #e3f2fc;
+  border: 1px solid #b6dcf2;
   white-space: nowrap;
 }
 
@@ -190,6 +247,30 @@
 }
 .p2-stat-polling .p1-stat-num {
   color: #534ab7;
+}
+
+.p2-stat-micro {
+  border-color: #f3dfae;
+  background: linear-gradient(180deg, #ffffff, #fef9ec);
+}
+.p2-stat-micro .p1-stat-icon {
+  color: #9a6a0a;
+  background: #fdf0d0;
+}
+.p2-stat-micro .p1-stat-num {
+  color: #9a6a0a;
+}
+
+.p2-stat-sub {
+  border-color: #bfe0f3;
+  background: linear-gradient(180deg, #ffffff, #f0f8fe);
+}
+.p2-stat-sub .p1-stat-icon {
+  color: #2f6f9e;
+  background: #e3f2fc;
+}
+.p2-stat-sub .p1-stat-num {
+  color: #2f6f9e;
 }
 
 /* ----------------------------- rank column ---------------------------- */

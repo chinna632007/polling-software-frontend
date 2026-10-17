@@ -1,4 +1,4 @@
-/**
+  /**
  * Thin fetch wrapper around the polling-duty backend.
  *
  * All requests are same-origin through the Vite dev proxy ("/api" -> backend,
@@ -119,3 +119,330 @@ export const getBatchPersonnel = (id) =>
 // Training: PO / APO separate allocation (work_mandal based).
 export const getTrainingPAApoBatches = () =>
   request(`/imports/training/po-apo-batches`);
+export const getBatchRejected = (id) =>
+  request(`/imports/batches/${id}/rejected`);
+
+/* --------------------- Micro Observer intake ------------------------- */
+
+/**
+ * Upload the separate Micro Observer file (bank staff: emp_mo shape).
+ * Same base64-JSON format as personnel. Replaces the whole MO list;
+ * rejected rows (incl. medical designations) are returned, not stored.
+ */
+export function uploadMicroObservers(file, signal) {
+  return fileToBase64(file).then((dataBase64) =>
+    request(
+      "/imports/micro-observers",
+      { method: "POST", body: { fileName: file.name, dataBase64 }, signal }
+    )
+  );
+}
+
+/** Upload training-locations workbook (venues for training batches). */
+export function uploadTrainingLocations(file, signal) {
+  return fileToBase64(file).then((dataBase64) =>
+    request(
+      "/imports/training-locations",
+      { method: "POST", body: { fileName: file.name, dataBase64 }, signal }
+    )
+  );
+}
+
+/** Upload training-*sessions* workbook (schedule; title, session_type, mandal, venue, ...). */
+export function uploadTrainingSessions(file, signal) {
+  return fileToBase64(file).then((dataBase64) =>
+    request(
+      "/imports/training-sessions",
+      { method: "POST", body: { fileName: file.name, dataBase64 }, signal }
+    )
+  );
+}
+
+/** Upload mandal-adjacency workbook (Mandal_Name, Near_Mandal_Names).
+ * Replaces the whole table — drives near-mandal posting (Stage 2 + Stage 3). */
+export function uploadMandalAdjacency(file, signal) {
+  return fileToBase64(file).then((dataBase64) =>
+    request(
+      "/imports/mandal-adjacency",
+      { method: "POST", body: { fileName: file.name, dataBase64 }, signal }
+    )
+  );
+}
+
+/** Read the current mandal-adjacency table (count + rows). */
+export function listMandalAdjacency(signal) {
+  return request("/imports/mandal-adjacency", { method: "GET", signal });
+}
+
+/** List training locations (venues). */
+export const listTrainingLocations = () => request("/imports/training-locations");
+
+/** List uploaded Micro Observers (authority/admin/staff). */
+export const listMicroObservers = () => request("/imports/micro-observers");
+
+/* --------------------------- Phase 3 – ballots --------------------------- */
+
+/**
+ * Upload the ballot register + Phase-2 officer lists; the backend parses the
+ * register and allocates officers to ballots (one officer per ballot, never
+ * reused; shortfall surfaced per row). Same base64-JSON convention as the
+ * other uploads (no multipart needed); session cookie rides along because
+ * `request()` sends credentials.
+ */
+export function allocateBallots({ file, presidingOfficers, pollingOfficers }, signal) {
+  return fileToBase64(file).then((dataBase64) =>
+    request("/randomization/ballot-allocation", {
+      method: "POST",
+      body: {
+        fileName: file.name,
+        dataBase64,
+        presidingOfficers: presidingOfficers || [],
+        pollingOfficers: pollingOfficers || [],
+      },
+      signal,
+    })
+  );
+}
+
+/* --------------------------- Polling stations ---------------------------- */
+
+/** Import polling stations (validated JSON array shaped like the 003 schema). */
+export const importStations = (fileName, stations) =>
+  request('/master-data/stations', { method: 'POST', body: { fileName, stations } });
+
+/** List polling stations (paginated server-side; page/limit optional). */
+export const listStations = (params = {}) => {
+  const qs = new URLSearchParams();
+  if (params.batchId) qs.set('batchId', params.batchId);
+  if (params.page) qs.set('page', params.page);
+  if (params.limit) qs.set('limit', params.limit);
+  const q = qs.toString() ? `?${qs}` : '';
+  return request(`/master-data/stations${q}`);
+};
+
+/** List station import batches (kind='polling_stations'). */
+export const listStationBatches = () => request('/master-data/stations/batches');
+
+/* ---------------------------- Randomization ------------------------------ */
+
+/**
+ * Run the full allocation chain (Stage 1 -> Stage 2 + MO -> Stage 3).
+ * Body: { electionConfiguration, designationRules, officeIdOverrides,
+ *         personnelImportBatchId, stationImportBatchId, districtId, seed }.
+ */
+export const runAllocation = (body) =>
+  request('/randomization/run', { method: 'POST', body });
+
+/** Authorised disclosure of a completed Stage 3 mapping (records confirmer). */
+export const publishAllocation = (stage3Run) =>
+  request('/randomization/publish', { method: 'POST', body: { stage3Run } });
+
+/* ----------------------------- Notifications ----------------------------- */
+
+/** Provider/channel configuration status (read-only for all auth'd users). */
+export const notificationChannels = () => request('/notifications/channels');
+
+/** Render per-recipient messages without sending (authority/admin). */
+export const previewNotifications = (body) =>
+  request('/notifications/preview', { method: 'POST', body });
+
+/** Authorised dispatch; requires confirmAllocation: true in body. */
+export const sendNotifications = (body) =>
+  request('/notifications/send', { method: 'POST', body });
+
+/** Delivery-attempt records (authority/admin). */
+export const notificationDeliveries = () => request('/notifications/deliveries');
+
+/**
+ * Send the Stage-3 duty notification for ONE team (authority/admin).
+ * The server loads members + mobiles from the frozen roster, so the body
+ * only carries the team code plus the explicit confirmation flag.
+ */
+export const sendTeamNotification = (teamCode) =>
+  request('/notifications/send-team', {
+    method: 'POST',
+    body: { teamCode, confirmAllocation: true },
+  });
+
+/* -------------------------------- Reports -------------------------------- */
+
+/** Last allocation run report (authority/admin). */
+export const allocationReport = () => request('/reports/allocation');
+
+/** Import data counts (all authenticated roles). */
+export const summaryReport = () => request('/reports/summary');
+
+/* -------------------------------- Training ------------------------------- */
+
+/** List training batches (batch_no / mandal / location / member_count). */
+export const listTrainingBatches = () => request('/training/batches');
+
+/** Members of one training batch (id, employee_id, employee_name, rank, mandals). */
+export const getBatchMembers = (id) =>
+  request(`/training/batches/${id}/members`);
+
+/** Candidate training locations for a batch (same mandal only). */
+export const getBatchLocations = (id) =>
+  request(`/training/batches/${id}/locations`);
+
+/** Admin assigns (or clears) a batch's training location. locationId: number | null. */
+export const assignBatchLocation = (batchId, locationId) =>
+  request(`/training/batches/${batchId}/location`, {
+    method: 'PATCH',
+    body: { locationId },
+  });
+
+/** Remove a personnel member from a training batch (persisted). */
+export const removeBatchMember = (batchId, personnelId) =>
+  request(`/training/batches/${batchId}/members/${personnelId}`, {
+    method: 'DELETE',
+  });
+export const listTrainingSessions = () => request('/training/sessions');
+
+/** Create a training session (authority/admin). */
+export const createTrainingSession = (body) =>
+  request('/training/sessions', { method: 'POST', body });
+
+/** Attendance for one session (all authenticated users). */
+export const trainingAttendance = (id) =>
+  request(`/training/sessions/${id}/attendance`);
+
+/** Mark attendance records (authority/admin). Body: { records: [...] }. */
+export const markTrainingAttendance = (id, records) =>
+  request(`/training/sessions/${id}/attendance`, {
+    method: 'POST',
+    body: { records },
+  });
+
+/* --------------------------- Manual appointments -------------------------- */
+/* Stage Officer II / counting team — admin picks personnel (not randomized). */
+
+/** List manual appointments (optionally by orderKind). */
+export const listOrderAssignments = (orderKind) =>
+  request(`/imports/order-assignments${orderKind ? `?orderKind=${encodeURIComponent(orderKind)}` : ''}`);
+
+/** Create a manual appointment (authority/admin). */
+export const createOrderAssignment = (body) =>
+  request('/imports/order-assignments', { method: 'POST', body });
+
+/** Update a manual appointment's role/team/table/body/person (authority/admin). */
+export const updateOrderAssignment = (id, body) =>
+  request(`/imports/order-assignments/${id}`, { method: 'PATCH', body });
+
+/** Delete a manual appointment (authority/admin). */
+export const deleteOrderAssignment = (id) =>
+  request(`/imports/order-assignments/${id}`, { method: 'DELETE' });
+
+/** Generate the order .docx for an appointment (returns base64). */
+export const generateOrder = (id) =>
+  request(`/imports/order-assignments/${id}/generate`, { method: 'POST' });
+
+/** Edit a personnel record (authority/admin). Allow-listed fields only. */
+export const editPersonnel = (id, body) =>
+  request(`/imports/personnel/${id}`, { method: 'PATCH', body });
+
+/* ----------------------------- Training orders ---------------------------- */
+/* PO/APO separate tables (migration 013). Built-in templates + ZIP download. */
+
+/** Wipe + allocate PO/APO batches from last Stage-2 run (duty mandal; MO skipped). */
+export const allocateTrainingOrders = () =>
+  request('/imports/training-orders/allocate', { method: 'POST', body: {} });
+
+/** Wipe every non-auth table (keeps users + roles). POST /imports/training-orders/wipe-all-data. */
+export const wipeAllTrainingOrders = () =>
+  request('/imports/training-orders/wipe-all-data', { method: 'POST', body: {} });
+
+/** Generate one DOCX per officer for PO or APO (built-in templates). Body: { group }. */
+export const generateTrainingOrders = (group) =>
+  request('/imports/training-orders/generate', {
+    method: 'POST',
+    body: { group },
+  });
+
+/** @deprecated use generateTrainingOrders */
+export const printTrainingOrder = (body) =>
+  generateTrainingOrders(body?.trainingGroup || body?.group || 'PO');
+
+export const listTrainingOrders = (params) => {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(params || {})) {
+    if (v !== undefined && v !== null && v !== '') q.set(k, String(v));
+  }
+  const qs = q.toString();
+  return request(`/imports/training-orders${qs ? `?${qs}` : ''}`);
+};
+
+export const listPoApoBatches = (group) =>
+  request(`/imports/training-orders/batches?group=${encodeURIComponent(group)}`);
+
+export const getPoApoBatchMembers = (group, id) =>
+  request(`/imports/training-orders/batches/${id}/members?group=${encodeURIComponent(group)}`);
+
+export const getPoApoBatchLocations = (group, id) =>
+  request(`/imports/training-orders/batches/${id}/locations?group=${encodeURIComponent(group)}`);
+
+export const assignPoApoBatchLocation = (group, id, locationId) =>
+  request(`/imports/training-orders/batches/${id}/location`, {
+    method: 'PATCH',
+    body: { group, locationId },
+  });
+
+async function triggerBlobDownload(res, fallbackName) {
+  const blob = await res.blob();
+  const disposition = res.headers.get('content-disposition') || '';
+  const match = /filename="([^"]+)"/.exec(disposition);
+  const fileName = match ? match[1] : fallbackName;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  return { ok: true, fileName };
+}
+
+/** Download ZIP of generated orders. group: 'PO' | 'APO' | 'ALL' */
+export async function downloadTrainingOrdersZip(group = 'ALL') {
+  let res;
+  try {
+    const q = encodeURIComponent(group || 'ALL');
+    res = await fetch(`${API_BASE}/imports/training-orders/download-zip?group=${q}`, {
+      credentials: 'include',
+    });
+  } catch {
+    throw new ApiError('Cannot reach the server. Is the backend running?', 0);
+  }
+  if (!res.ok) {
+    let message = `Download failed (${res.status})`;
+    try {
+      const data = JSON.parse(await res.text());
+      if (data && (data.error || data.message)) message = data.error || data.message;
+    } catch { /* non-JSON */ }
+    throw new ApiError(message, res.status);
+  }
+  return triggerBlobDownload(res, `training-orders-${group || 'ALL'}.zip`);
+}
+
+/** Single order DOCX. */
+export async function downloadTrainingOrder(group, id) {
+  let res;
+  try {
+    res = await fetch(
+      `${API_BASE}/imports/training-orders/${encodeURIComponent(group)}/${id}/download`,
+      { credentials: 'include' }
+    );
+  } catch {
+    throw new ApiError('Cannot reach the server. Is the backend running?', 0);
+  }
+  if (!res.ok) {
+    let message = `Download failed (${res.status})`;
+    try {
+      const data = JSON.parse(await res.text());
+      if (data && (data.error || data.message)) message = data.error || data.message;
+    } catch { /* non-JSON */ }
+    throw new ApiError(message, res.status);
+  }
+  return triggerBlobDownload(res, `training-order-${id}.docx`);
+}

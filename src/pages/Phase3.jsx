@@ -1,7 +1,8 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import "./Phase1.css"; // reuse shared chrome (page, shell, breadcrumb, title, stats, table, pagination, search, upload cards…)
 import "./Phase3.css"; // Phase 3 specifics (allocate button, allocation badges, slot table)
 import Header from "../components/Header.jsx";
+import { allocateBallots, allocationReport, sendTeamNotification } from "../api/client.js";
 
 /**
  * Phase 3 – Ballot Allocation
@@ -27,7 +28,6 @@ import Header from "../components/Header.jsx";
  */
 
 const USE_MOCK = false;
-const API_BASE = "/api";
 const ACCEPTED = [".xlsx", ".xls", ".csv"];
 const PAGE_SIZE = 10;
 const PHASE2_STORE_KEY = (context) => `elections:${context}:phase2-partition`;
@@ -41,17 +41,6 @@ function HomeIcon() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M3 9.5 12 3l9 6.5" />
       <path d="M5 10v10a1 1 0 0 0 1 1h3v-6h6v6h3a1 1 0 0 0 1-1V10" />
-    </svg>
-  );
-}
-
-function PeopleIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M17 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-      <circle cx="9.5" cy="7" r="4" />
-      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
     </svg>
   );
 }
@@ -173,14 +162,6 @@ function num(v, fallback) {
   return Number.isFinite(n) ? n : fallback;
 }
 
-async function parseJson(res) {
-  try {
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
-
 function statusKey(status) {
   const s = String(status || "").toLowerCase();
   if (s.includes("reject") || s.includes("unassign") || s.includes("pend")) return "rejected";
@@ -276,6 +257,40 @@ function loadOfficers(context) {
     };
   } catch {
     return { presiding: [], polling: [], apo: [], opo: [], na: [], hasOfficers: false };
+/** Read the Presiding / APO / Polling officers saved by Phase 2.
+ *  APO (Assistant Presiding Officer) is split out of the generic
+ *  "Polling Officer" bucket so it shows distinctly instead of being
+ *  lumped in with normal polling officers.
+ */
+function isApo(row) {
+  const role = String(row?.role ?? "").toLowerCase();
+  const teamRole = String(row?.teamRole ?? "").toLowerCase();
+  const designation = String(row?.designation ?? "").toLowerCase();
+  return (
+    role.includes("apo") ||
+    role.includes("assistant presiding") ||
+    teamRole.includes("apo") ||
+    teamRole.includes("assistant presiding") ||
+    designation.includes("apo") ||
+    designation.includes("assistant presiding")
+  );
+}
+
+/** Read the Presiding / APO / Polling officers saved by Phase 2. */
+function loadOfficers(context) {
+  try {
+    const raw = sessionStorage.getItem(PHASE2_STORE_KEY(context));
+    if (!raw) return { presiding: [], apo: [], polling: [], hasOfficers: false };
+    const rows = JSON.parse(raw);
+    if (!Array.isArray(rows)) return { presiding: [], apo: [], polling: [], hasOfficers: false };
+    const presiding = rows.filter((r) => r.role === "Presiding Officer").map((r) => r.employeeName);
+    const apo = rows.filter((r) => r.role !== "Presiding Officer" && isApo(r)).map((r) => r.employeeName);
+    const polling = rows.filter(
+      (r) => r.role !== "Presiding Officer" && !isApo(r) && (r.role === "Polling Officer" || !r.role)
+    ).map((r) => r.employeeName);
+    return { presiding, apo, polling, hasOfficers: presiding.length + apo.length + polling.length > 0 };
+  } catch {
+    return { presiding: [], apo: [], polling: [], hasOfficers: false };
   }
 }
 
@@ -356,6 +371,84 @@ export default function Phase3({ context = "municipal" }) {
   // Presiding / Polling officers from Phase 2.
   const officers = useMemo(() => loadOfficers(context), [context]);
 
+  // Duty allocation (Stage 2 teams -> Stage 3 station allotment) from the last
+  // run — verification view. Loaded once; the send button posts per team.
+  const [duty, setDuty] = useState(null); // { runAt, stage2, stage3, counts }
+  const [dutyError, setDutyError] = useState("");
+  const [sendState, setSendState] = useState({}); // teamCode -> { pending, msg, tone }
+
+  useEffect(() => {
+    let cancelled = false;
+    allocationReport()
+      .then((data) => {
+        if (!cancelled) setDuty(data);
+      })
+      .catch((e) => {
+        if (!cancelled) setDutyError(e.message || "Failed to load duty allocation");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // One row per Stage-2 team with its Stage-3 station joined by teamCode.
+  // Members carry the full officer allocation profile (employee ID, designation,
+  // MO flag, venue/ballot code + duty mandal from the frozen roster).
+  const dutyRows = useMemo(() => {
+    const parties = duty?.stage2?.parties || [];
+    const assigns = duty?.stage3?.assignments || [];
+    const byTeam = new Map(assigns.map((a) => [a.teamCode, a]));
+    return parties.map((p) => {
+      const members = (p.members || [])
+        .map((m) => ({
+          employeeId: m.employeeId ?? m.employee_id ?? m.personnelId ?? null,
+          name: m.name,
+          role: m.role,
+          designation: m.designation,
+          isMicroObserver: !!m.isMicroObserver,
+          venueCode: m.venueCode ?? m.venue_code ?? null,
+          dutyMandal: m.dutyMandal ?? m.duty_mandal ?? null,
+        }))
+        .filter((m) => m.name || m.employeeId);
+      return { ...p, members, assignment: byTeam.get(p.teamCode) || null };
+    });
+  }, [duty]);
+
+  async function onSendNotification(teamCode, memberCount) {
+    const confirmed = window.confirm(
+      `Send the duty notification for team ${teamCode} to ${memberCount} member(s) via the configured channels (SMS / WhatsApp)?`
+    );
+    if (!confirmed) return;
+    setSendState((s) => ({ ...s, [teamCode]: { pending: true, msg: "" } }));
+    try {
+      const res = await sendTeamNotification(teamCode);
+      const sum = res.summary || {};
+      const by = sum.byChannel || {};
+      const bits = [];
+      for (const ch of ["sms", "whatsapp"]) {
+        if (!by[ch]) continue;
+        const c = by[ch];
+        let bit = `${ch.toUpperCase()}: ${c.delivered || 0} delivered`;
+        if (c.failed) bit += `, ${c.failed} failed`;
+        if (c.unavailable) bit += `, ${c.unavailable} unavailable`;
+        bits.push(bit);
+      }
+      setSendState((s) => ({
+        ...s,
+        [teamCode]: {
+          pending: false,
+          msg: bits.join(" · ") || `Sent ${sum.sent || 0} message(s)`,
+          tone: (sum.failed || 0) > 0 ? "warn" : "ok",
+        },
+      }));
+    } catch (e) {
+      setSendState((s) => ({
+        ...s,
+        [teamCode]: { pending: false, msg: e.message || "Send failed", tone: "warn" },
+      }));
+    }
+  }
+
   // Single upload slot: ballot register only.
   const [ballotFile, setBallotFile] = useState(null);
   const ballotInputRef = useRef(null);
@@ -420,6 +513,13 @@ export default function Phase3({ context = "municipal" }) {
       setErrorMsg("Please upload the Ballot Excel file first.");
       return;
     }
+    // Fail closed: no Phase-2 officers means every ballot would be
+    // "Unassigned" — say so instead of uploading and rendering noise.
+    if (!officers.hasOfficers) {
+      setStatus("error");
+      setErrorMsg("No Presiding/Polling officers found from Phase 2 — complete Phase 2 (Form Teams) first.");
+      return;
+    }
     setStatus("allocating");
     setErrorMsg("");
     try {
@@ -427,19 +527,14 @@ export default function Phase3({ context = "municipal" }) {
       if (USE_MOCK) {
         data = await new Promise((res) => setTimeout(() => res(mockAllocate()), 500));
       } else {
-        const form = new FormData();
-        form.append("ballots", ballotFile);
-        form.append("presidingOfficers", JSON.stringify(officers.presiding));
-        form.append("pollingOfficers", JSON.stringify(officers.polling));
-        const res = await fetch(`${API_BASE}/${context}/phase-3/allocate`, {
-          method: "POST",
-          body: form,
+        // Real backend: base64-JSON via the shared client (credentials ride
+        // along). POST /api/randomization/ballot-allocation parses the
+        // register and allocates the Phase-2 officers to ballots.
+        data = await allocateBallots({
+          file: ballotFile,
+          presidingOfficers: officers.presiding,
+          pollingOfficers: officers.polling,
         });
-        if (!res.ok) {
-          const msg = await parseJson(res);
-          throw new Error(msg?.message || `Allocation failed (${res.status}).`);
-        }
-        data = await parseJson(res);
       }
       const rows = (Array.isArray(data?.rows) ? data.rows : []).map(normalizeRow);
       const summary = normalizeSummary(data, rows);
@@ -457,6 +552,63 @@ export default function Phase3({ context = "municipal" }) {
       setStatus("error");
       setErrorMsg(err.message || "Something went wrong during allocation.");
     }
+  }
+
+  /** Continue to the Training page (assign venues / generate training orders). */
+  const goToTraining = () => {
+    if (!result || status === "allocating") return;
+    window.location.href = `${backHref}/training`;
+  };
+
+  /** Print ID cards for the currently allocated officers. */
+  const generateIdCard = () => {
+    if (!result || status === "allocating") return;
+    const rows = (result.rows || []).filter((r) => r._statusKey === "approved");
+    const win = window.open("", "_blank");
+    if (!win) return;
+    win.document.write(`
+      <html><head><title>ID Cards - ${contextLabel}</title>
+      <style>
+        body{font-family:sans-serif;padding:20px;color:#111}
+        h1{font-size:18px;margin-bottom:16px;border-bottom:2px solid #1a3c5a;padding-bottom:6px}
+        .sheet{display:flex;flex-wrap:wrap;gap:14px}
+        .card{border:2px solid #1a3c5a;border-radius:8px;padding:10px 12px;width:250px;box-sizing:border-box;background:#fff}
+        .card h2{font-size:14px;margin:0 0 4px 0;color:#1a3c5a}
+        .card p{font-size:12px;margin:2px 0}
+        .tag{font-size:10px;letter-spacing:1px;color:#666;text-transform:uppercase;margin-bottom:6px}
+        @media print{body{padding:0} .card{break-inside:avoid}}
+      </style></head><body>
+      <h1>Polling Officer ID Cards — ${contextLabel}</h1>
+      <div class="sheet">
+      ${rows
+        .map(
+          (r) => `
+        <div class="card">
+          <div class="tag">Polling Duty ID</div>
+          <h2>${escapeHtml(r.ballotId || "")}</h2>
+          <p><strong>Presiding:</strong> ${escapeHtml(r.presidingOfficer || "—")}</p>
+          <p><strong>Polling:</strong> ${escapeHtml(r.pollingOfficer || "—")}</p>
+          <p><strong>Mandal:</strong> ${escapeHtml(r.mandal || "—")}</p>
+          <p><strong>Station:</strong> ${escapeHtml(r.psNo || "—")}</p>
+          <p><strong>Status:</strong> ${escapeHtml(r.status || "Allocated")}</p>
+        </div>`
+        )
+        .join("")}
+      </div>
+      <p style="margin-top:16px;font-size:12px;color:#666">Generated ${rows.length} card(s). Use browser Print (Ctrl+P) and save as PDF.</p>
+      </body></html>
+    `);
+    win.document.close();
+    win.print();
+  };
+
+  function escapeHtml(s) {
+    return String(s ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
   }
 
   const rows = result?.rows ?? [];
@@ -534,7 +686,28 @@ export default function Phase3({ context = "municipal" }) {
           </aside>
         </section>
 
-
+        {/* officers from Phase 2 */}
+        <section className="p3-officers">
+          <div className="p3-officers-head">
+            <span className="p3-officers-title">Officers from Phase 2</span>
+            {!officers.hasOfficers && (
+              <a className="p3-officers-link" href={`${backHref}/phase-2`}>
+                Run Phase 2 first to assign officers →
+              </a>
+            )}
+          </div>
+          <div className="p3-officer-pills">
+            <OfficerCount tone="p3-tone-presiding" icon={<TrophyIcon />} label="Presiding Officers" count={officers.presiding.length} />
+            <OfficerCount tone="p3-tone-apo" icon={<TrophyIcon />} label="APO Officers" count={officers.apo.length} />
+            <OfficerCount tone="p3-tone-polling" icon={<BadgeIcon />} label="Polling Officers" count={officers.polling.length} />
+          </div>
+          {!officers.hasOfficers && (
+            <p className="p3-officers-warn">
+              No Presiding/APO/Polling officers found. Complete Phase 2 so the backend has officers to
+              allocate to — though you may still upload files and allocate.
+            </p>
+          )}
+        </section>
 
         {/* single upload: ballot register only */}
         <section className="p3-upload-grid p3-upload-single">
@@ -688,6 +861,35 @@ export default function Phase3({ context = "municipal" }) {
               </div>
             </div>
 
+            {/* post-allocation actions: continue to training / generate ID cards */}
+            <div className="p3-next-actions">
+              <button
+                type="button"
+                className="p3-next-btn"
+                onClick={goToTraining}
+                disabled={!result || status === "allocating"}
+              >
+                <LinkIcon />
+                {" "}
+                Continue to Training
+              </button>
+              <button
+                type="button"
+                className="p3-idcard-btn"
+                onClick={generateIdCard}
+                disabled={!result || status === "allocating"}
+              >
+                <DocIcon />
+                {" "}
+                Generate ID Card
+              </button>
+              {result && status === "done" && (
+                <span className="p3-next-note">
+                  Allocation saved — proceed to training to assign venues and generate orders.
+                </span>
+              )}
+            </div>
+
 
             {/* table */}
             <div className="p1-table-wrap">
@@ -815,6 +1017,84 @@ export default function Phase3({ context = "municipal" }) {
               )}
             </div>
           </section>
+          {/* Duty allocation (Stage 2 -> Stage 3): team data shown below the
+               results table, only after Allocate has run. */}
+          {status === "done" && duty && dutyRows.length > 0 && (
+            <section className="p3-duty">
+              <div className="p3-officers-head">
+                <span className="p3-officers-title">Duty Allocation (Stage 2 → Stage 3)</span>
+                {duty?.runAt && (
+                  <span className="p3-officer-pill-label">
+                    Last run: {new Date(duty.runAt).toLocaleString("en-IN")}
+                    {duty.stage3?.status ? ` · Stage 3: ${duty.stage3.status}` : ""}
+                    {duty.stage3?.publicationStatus ? ` · ${duty.stage3.publicationStatus}` : ""}
+                  </span>
+                )}
+              </div>
+              {dutyError && <div className="p1-note">⚠ {dutyError}</div>}
+              <div className="p1-table-wrap">
+                <table className="p1-table p3-table">
+                  <thead>
+                    <tr>
+                      <th>Team</th>
+                      <th>Ballot ID</th>
+                      <th>Posting Mandal</th>
+                      <th>Station (Stage 3)</th>
+                      <th>Station Mandal</th>
+                      <th>Members (name — role)</th>
+                      <th>Notification</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dutyRows.map((r) => {
+                      const st = sendState[r.teamCode] || {};
+                      return (
+                        <tr key={r.teamCode}>
+                          <td className="p1-strong p1-mono">{r.teamCode}</td>
+                          <td className="p1-mono">
+                            {r.assignment?.stationId || r.assignment?.ballotId || r.assignment?.venueCode || "—"}
+                            {!r.assignment && <span className="p1-remarks"> (not allotted)</span>}
+                          </td>
+                          <td>{r.postingMandal || "—"}</td>
+                          <td className="p1-mono">
+                            {r.assignment?.stationCode || r.assignment?.stationId || "—"}
+                          </td>
+                          <td>{r.assignment?.stationMandal || "—"}</td>
+                          <td>
+                            {(r.members || []).map((m, i) => (
+                              <div key={`${r.teamCode}-${i}`} className="p1-officer-row">
+                                <span className="p1-mono">{m.employeeId || "—"}</span>
+                                <span className="p1-strong">{m.name || "—"}</span>
+                                <span className="p1-remarks">— {m.role}</span>
+                                {m.isMicroObserver ? " (MO)" : ""}
+                                {m.designation ? <span className="p1-remarks">— {m.designation}</span> : ""}
+                              </div>
+                            ))}
+                          </td>
+                          <td>
+                            <button
+                              type="button"
+                              className="p1-mini-btn"
+                              disabled={st.pending}
+                              onClick={() => onSendNotification(r.teamCode, (r.members || []).length)}
+                            >
+                              {st.pending ? "Sending…" : "Send notification"}
+                            </button>
+                            {st.msg && (
+                              <div className="p1-note">
+                                {st.tone === "warn" ? "⚠ " : ""}
+                                {st.msg}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
         )}
       </div>
     </main>
