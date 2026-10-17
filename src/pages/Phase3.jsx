@@ -214,6 +214,49 @@ function pageList(current, total) {
   return out;
 }
 
+/** Team-role groups shown below the Phase 3 allocation table.
+ * New formation: 1 PO (Presiding Officer), 1 APO (Assistant Polling Officer,
+ * non-gazetted School Assistant), 4 OPOs (Other / normal Polling Officers).
+ * MO and any unassigned officer are not assigned here. APO is displayed
+ * distinctly from OPO ("normal polling officer").
+ */
+const PO_ROLES = new Set(["Presiding Officer"]);
+const APO_ROLES = new Set(["APO", "Assistant Polling Officer"]);
+const OPO_ROLES = new Set(["OPO", "Other Polling Officer", "Polling Officer"]);
+
+/** Treat "na" / empty / unknown roles as unassigned — never force them into APO or OPO. */
+function isNaRole(role) {
+  const r = (role || "").toString().trim().toLowerCase();
+  return r === "" || r === "na" || r === "n/a" || r === "null" || r === "undefined";
+}
+
+/** Read the officers saved by Phase 2 for the Phase 3 allocation page. */
+function loadOfficers(context) {
+  try {
+    const raw = sessionStorage.getItem(PHASE2_STORE_KEY(context));
+    if (!raw)
+      return { presiding: [], polling: [], apo: [], opo: [], na: [], hasOfficers: false };
+    const rows = JSON.parse(raw);
+    if (!Array.isArray(rows))
+      return { presiding: [], polling: [], apo: [], opo: [], na: [], hasOfficers: false };
+    const roleOf = (r) => String(r.role || "").trim();
+    const presiding = rows.filter((r) => PO_ROLES.has(roleOf(r))).map((r) => r.employeeName);
+    const apo = rows.filter((r) => APO_ROLES.has(roleOf(r))).map((r) => r.employeeName);
+    // OPO = normal/other polling officers (distinct from APO).
+    const opo = rows.filter((r) => OPO_ROLES.has(roleOf(r))).map((r) => r.employeeName);
+    const na = rows.filter((r) => isNaRole(roleOf(r))).map((r) => r.employeeName);
+    // polling = every polling officer (APO + OPO) kept for the Phase 3 allocation API.
+    const polling = [...apo, ...opo];
+    return {
+      presiding,
+      polling,
+      apo,
+      opo,
+      na,
+      hasOfficers: presiding.length + polling.length > 0,
+    };
+  } catch {
+    return { presiding: [], polling: [], apo: [], opo: [], na: [], hasOfficers: false };
 /** Read the Presiding / APO / Polling officers saved by Phase 2.
  *  APO (Assistant Presiding Officer) is split out of the generic
  *  "Polling Officer" bucket so it shows distinctly instead of being
@@ -933,6 +976,45 @@ export default function Phase3({ context = "municipal" }) {
                   <ChevronRight />
                 </button>
               </div>
+            </div>
+            {/* Team data – officers from Phase 2, shown below the allocation table after clicking Allocate */}
+            <div className="p3-officers">
+              <div className="p3-officers-head">
+                <span className="p3-officers-title">Team Data – Officers from Phase 2</span>
+              </div>
+              <div className="p3-officer-pills">
+                <OfficerCount
+                  tone="p3-tone-presiding"
+                  icon={<TrophyIcon />}
+                  label="PO (Presiding Officers)"
+                  count={officers.presiding.length}
+                />
+                <OfficerCount
+                  tone="p3-tone-apo"
+                  icon={<BadgeIcon />}
+                  label="APO Officers"
+                  count={officers.apo.length}
+                />
+                <OfficerCount
+                  tone="p3-tone-opo"
+                  icon={<PeopleIcon />}
+                  label="OPO Officers"
+                  count={officers.opo.length}
+                />
+                {officers.na.length > 0 && (
+                  <OfficerCount
+                    tone="p3-tone-na"
+                    icon={<CrossIcon />}
+                    label="NA / Unassigned"
+                    count={officers.na.length}
+                  />
+                )}
+              </div>
+              {officers.presiding.length === 0 && officers.apo.length === 0 && officers.opo.length === 0 && (
+                <p className="p3-officers-warn">
+                  No PO/APO/OPO officers found. Complete Phase 2 so the backend has officers to allocate to.
+                </p>
+              )}
             </div>
           </section>
           {/* Duty allocation (Stage 2 -> Stage 3): team data shown below the

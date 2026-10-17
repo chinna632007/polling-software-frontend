@@ -205,6 +205,10 @@
   white-space: nowrap;
 }
 
+.p2-badge-apo {
+  color: #8a4b00;
+  background: #ffeecd;
+  border: 1px solid #f5c86e;
 .p2-badge-mo {
   color: #8a5f06;
   background: #fdf0d0;
