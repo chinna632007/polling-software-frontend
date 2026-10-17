@@ -289,3 +289,49 @@
   }
 }
 
+
+/* ---------------- Duty allocation (Stage 2 -> Stage 3) -------------------
+ * Verification table: one row per team with its Stage-3 station allotment,
+ * member list, and the per-team notification send button. Button/note styles
+ * are scoped here (Training.css defines the originals but is not imported by
+ * this page — keeps this page self-contained).
+ */
+.p3-duty {
+  margin-top: 18px;
+}
+
+.p3-duty .p1-mini-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 14px;
+  border-radius: 10px;
+  border: 1px solid #cfe2f6;
+  background: #fff;
+  color: #092f68;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+}
+.p3-duty .p1-mini-btn:hover:not(:disabled) {
+  background: #eef6ff;
+  border-color: #2f85bb;
+  color: #073774;
+  box-shadow: 0 2px 6px rgba(47, 133, 187, 0.12);
+}
+.p3-duty .p1-mini-btn:active:not(:disabled) { transform: translateY(0.5px); }
+.p3-duty .p1-mini-btn:disabled { opacity: 0.6; cursor: not-allowed; filter: grayscale(0.35); }
+
+.p3-duty .p1-note {
+  padding: 7px 12px;
+  border-radius: 10px;
+  background: #eef6ff;
+  color: #092f68;
+  font-size: 12.5px;
+  font-weight: 600;
+  border: 1px solid #bfe3fd;
+  margin-top: 6px;
+  line-height: 1.45;
+}

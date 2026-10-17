@@ -7,6 +7,8 @@ import Header from "../components/Header.jsx";
 import {
   uploadMicroObservers,
   listMicroObservers,
+  uploadMandalAdjacency,
+  listMandalAdjacency,
 } from "../api/client.js";
 
 /**
@@ -247,28 +249,15 @@ function dutyFor(teamRole, chunkSize) {
  * pool keeps working, plus `teamCode`, `teamRole`, `duty` and `teamStatus`.
  *
  * Mirrors the backend Stage 2 rules (read-only): each team provisions
- * 6 officers (1+5) PLUS ceil((6 + 1 MO) x 20%) = 2 substitutes from the
- * approved pool, so a full team displays 9 rows (6 officers + 1 MO +
- * 2 substitutes). Surplus officers below one team's minimum stay
- * UNASSIGNED (still listed honestly). Substitutes carry `isSubstitute`
- * and `substituteFor` (their team code) and render under their team.
- * Substitute shortfall (team could not draw its 2 from the pool) is
- * reported fail-closed via subShortfall — never silently skipped.
+ * 6 officers (1+5). Surplus officers below one team's minimum stay
+ * UNASSIGNED (still listed honestly).
  */
-const SUBSTITUTE_NUMERATOR = 1;
-const SUBSTITUTE_DENOMINATOR = 5;
-
-function substituteCountFor(teamSize) {
-  return Math.ceil((teamSize * SUBSTITUTE_NUMERATOR) / SUBSTITUTE_DENOMINATOR);
-}
-
 function formTeams(rankedRows, codeShort) {
   const n = rankedRows.length;
   if (n === 0) return [];
-  // Officer rows consumed per fully provisioned team: 6 operational
-  // + 2 substitutes = 8 (the MO comes from the separate MO upload).
-  const subsPerTeam = substituteCountFor(TEAM_SIZE + 1); // ceil(7/5) = 2
-  const rowsPerTeam = TEAM_SIZE + subsPerTeam; // 8
+  // Officer rows consumed per team: 6 operational only (no substitutes).
+  // The MO comes from the separate MO upload.
+  const rowsPerTeam = TEAM_SIZE;
   let teamCount = Math.floor(n / rowsPerTeam);
   const remainder = n - teamCount * rowsPerTeam;
   if (remainder >= TEAM_SIZE) {
@@ -286,7 +275,6 @@ function formTeams(rankedRows, codeShort) {
     teams.push({ chunk, teamCode: buildTeamCode(codeShort, t + 1), teamIndex: t + 1 });
   }
   const out = [];
-  let subCursor = 0;
   for (const tm of teams) {
     const { chunk, teamCode, teamIndex } = tm;
     const roles = teamRolesForSize(chunk.length);
@@ -303,33 +291,9 @@ function formTeams(rankedRows, codeShort) {
         teamStatus,
       });
     });
-    // 20% substitutes from leftover officers only — never MO staff. The
-    // +1 accounts for the Micro Observer that will attach to the team
-    // (backend counts substitutes on operational + MO = 7 -> 2).
-    const need = substituteCountFor(chunk.length + 1);
-    const subs = [];
-    for (let s = 0; s < need && subCursor < leftover.length; s += 1) {
-      subs.push(leftover[subCursor]);
-      subCursor += 1;
-    }
-    subs.forEach((r) => {
-      out.push({
-        ...r,
-        teamCode,
-        teamIndex,
-        teamRole: "Substitute Officer",
-        role: "Substitute Officer",
-        duty: "Deployment-ready backup for this team (20% substitution).",
-        teamStatus,
-        isSubstitute: true,
-        substituteFor: teamCode,
-      });
-    });
   }
   // Surplus officers below one team's minimum stay UNASSIGNED (listed, not dropped).
-  for (; subCursor < leftover.length; subCursor += 1) {
-    out.push(leftover[subCursor]);
-  }
+  leftover.forEach((r) => out.push(r));
   return out;
 }
 
@@ -338,10 +302,9 @@ function formTeams(rankedRows, codeShort) {
  * MOs come ONLY from the separate MO upload list — never from officers.
  * Matching is round-robin in upload order; a missing MO for a team is
  * reported via `moShortfall` (fail closed, never silently skipped).
- * Substitutes are untouched (officer-only, already attached by formTeams).
  */
 function assignMicroObserversToTeams(rows, moList) {
-  const teams = groupIntoTeams(rows.filter((r) => !r.isSubstitute || r.teamCode));
+  const teams = groupIntoTeams(rows.filter((r) => r.teamCode));
   const operational = rows.filter((r) => !r.isMicroObserver);
   const usedMoIds = new Set(
     operational.filter((r) => r.isMicroObserver).map((r) => String(r.employeeId))
@@ -392,8 +355,6 @@ function stripTeam(row) {
   delete clean.teamRole;
   delete clean.duty;
   delete clean.teamStatus;
-  delete clean.isSubstitute;
-  delete clean.substituteFor;
   delete clean.isMicroObserver;
   return clean;
 }
@@ -496,13 +457,6 @@ function RoleBadge({ role }) {
       </span>
     );
   }
-  if (role === "Substitute Officer") {
-    return (
-      <span className="p1-badge p2-badge-sub">
-        <BadgeIcon /> {role}
-      </span>
-    );
-  }
   // Any numbered 1st–5th Polling Officer reads as the polling group.
   return (
     <span className="p1-badge p2-badge-polling">
@@ -591,31 +545,25 @@ export default function Phase2({ context = "municipal" }) {
   const [moFile, setMoFile] = useState(null);
   const [moStatus, setMoStatus] = useState("idle"); // idle | uploading | done | error
   const [moMsg, setMoMsg] = useState("");
+  const [adjList, setAdjList] = useState([]);
+  const [adjFile, setAdjFile] = useState(null);
+  const adjInputRef = useRef(null);
+  const [adjStatus, setAdjStatus] = useState("idle"); // idle | uploading | done | error
+  const [adjMsg, setAdjMsg] = useState("");
   const [moAssigned, setMoAssigned] = useState(0);
   const [moShortfall, setMoShortfall] = useState([]);
   const [assigningMo, setAssigningMo] = useState(false);
 
-  const [roleFilter, setRoleFilter] = useState("all"); // all | presiding | polling | micro | substitute
+  const [roleFilter, setRoleFilter] = useState("all"); // all | presiding | polling | micro
   const [teamFilter, setTeamFilter] = useState(null); // team code → only that team's officers
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
 
   const presidingCount = rows.filter((r) => r.role === "Presiding Officer").length;
-  const pollingCount = rows.filter((r) => r.role === "Polling Officer" && !r.isSubstitute).length;
-  const substituteCount = rows.filter((r) => r.isSubstitute).length;
+  const pollingCount = rows.filter((r) => r.role === "Polling Officer").length;
   const microCount = rows.filter((r) => r.isMicroObserver).length;
   const groupedTeams = useMemo(() => groupIntoTeams(rows), [rows]);
   const teamCount = groupedTeams.length;
-  // Fail-closed substitute report: any operational team (5-6 officers) that
-  // could not draw its full 20% (2) substitutes is listed, like MO shortfall.
-  const subShortfall = useMemo(() => groupedTeams
-    .map((tm) => {
-      const ops = tm.members.filter((r) => !r.isSubstitute && !r.isMicroObserver).length;
-      const subs = tm.members.filter((r) => r.isSubstitute).length;
-      const need = ops >= TEAM_SIZE - 1 ? substituteCountFor(ops + 1) : 0; // 6-op or 5-op (shortage) team
-      return { teamCode: tm.teamCode, need, have: subs };
-    })
-    .filter((x) => x.need > 0 && x.have < x.need), [groupedTeams]);
 
   function runPartition() {
     setBusy(true);
@@ -699,12 +647,50 @@ export default function Phase2({ context = "municipal" }) {
     }
   }
 
+  function onAdjPick(e) {
+    const f = e.target.files?.[0];
+    if (f) {
+      setAdjFile(f);
+      setAdjMsg("");
+      setAdjStatus("idle");
+    }
+    e.target.value = "";
+  }
+
+  async function uploadAdjFile() {
+    if (!adjFile) return;
+    setAdjStatus("uploading");
+    setAdjMsg("");
+    try {
+      const res = await uploadMandalAdjacency(adjFile);
+      const rejected = Array.isArray(res?.rejected) ? res.rejected : [];
+      // Refresh the stored adjacency so the count reflects server-accepted rows.
+      let list = [];
+      try {
+        const fetched = await listMandalAdjacency();
+        list = Array.isArray(fetched?.adjacency) ? fetched.adjacency : [];
+      } catch {
+        list = [];
+      }
+      setAdjList(list);
+      setAdjStatus("done");
+      setAdjMsg(
+        `Near-mandal upload: ${res?.acceptedRows ?? list.length} accepted` +
+        (rejected.length > 0 ? `, ${rejected.length} rejected` : "") +
+        "."
+      );
+    } catch (err) {
+      setAdjStatus("error");
+      setAdjMsg(err?.message || "Near-mandal upload failed.");
+    }
+  }
+
   function runAssignMo() {
     if (!partitioned || moList.length === 0) return;
     setAssigningMo(true);
     setTimeout(() => {
       setRows((prev) => {
-        // Strip any previous MO assignment (idempotent re-assign), keep teams + substitutes.
+        // Strip any previous MO assignment (idempotent re-assign), keep teams.
         const base = prev.filter((r) => !r.isMicroObserver);
         const { rows: next, shortfall, assigned } = assignMicroObserversToTeams(base, moList);
         setMoAssigned(assigned);
@@ -726,9 +712,8 @@ export default function Phase2({ context = "municipal" }) {
   const filtered = useMemo(() => {
     let list = rows;
     if (roleFilter === "presiding") list = list.filter((r) => r.role === "Presiding Officer");
-    if (roleFilter === "polling") list = list.filter((r) => r.role === "Polling Officer" && !r.isSubstitute && !r.isMicroObserver);
+    if (roleFilter === "polling") list = list.filter((r) => r.role === "Polling Officer" && !r.isMicroObserver);
     if (roleFilter === "micro") list = list.filter((r) => r.isMicroObserver);
-    if (roleFilter === "substitute") list = list.filter((r) => r.isSubstitute);
     if (teamFilter) list = list.filter((r) => r.teamCode === teamFilter);
     const q = query.trim().toLowerCase();
     if (q) {
@@ -820,19 +805,13 @@ export default function Phase2({ context = "municipal" }) {
             </span>
             <span className="p2-partition-hint">
               {partitioned
-                ? `Formed ${teamCount} team${teamCount === 1 ? "" : "s"} — ${presidingCount} Presiding, ${pollingCount} Polling, ${substituteCount} Substitutes (20%), ${microCount} Micro Observers.`
+                ? `Formed ${teamCount} team${teamCount === 1 ? "" : "s"} — ${presidingCount} Presiding, ${pollingCount} Polling, ${microCount} Micro Observers.`
                 : "Not yet formed — every employee is currently Unassigned."}
             </span>
             {moShortfall.length > 0 && (
               <span className="p2-partition-warn">
                 {moShortfall.length} team{moShortfall.length === 1 ? "" : "s"} missing a Micro Observer
                 ({moShortfall.map((s) => s.teamCode).join(", ")}) — upload more MO staff and re-assign.
-              </span>
-            )}
-            {subShortfall.length > 0 && (
-              <span className="p2-partition-warn">
-                {subShortfall.length} team{subShortfall.length === 1 ? "" : "s"} short of 20% substitutes
-                ({subShortfall.map((s) => `${s.teamCode} ${s.have}/${s.need}`).join(", ")}) — approve more officers in Phase 1 and re-form.
               </span>
             )}
           </div>
@@ -867,7 +846,6 @@ export default function Phase2({ context = "municipal" }) {
             </span>
             <span className="p2-partition-hint">
               Upload the bank-staff MO file separately, then assign one MO to each formed team.
-              Substitutes always come from officer leftover — never from this list.
             </span>
             {moFile && (
               <span className="p2-partition-hint">
@@ -927,6 +905,58 @@ export default function Phase2({ context = "municipal" }) {
           </div>
         </section>
 
+        {/* near-mandal adjacency upload (duty posting rule, Stage 2 + Stage 3) */}
+        <section className="p2-mo-bar">
+          <div className="p2-partition-info">
+            <span className="p2-partition-count">
+              <strong>{adjList.length}</strong> Near-mandal rows uploaded
+            </span>
+            <span className="p2-partition-hint">
+              Upload the Mandal_Name + Near_Mandal_Names file. Officers then get duties
+              only in near mandals (both team posting and station allotment).
+            </span>
+            {adjFile && (
+              <span className="p2-partition-hint">
+                Selected: {adjFile.name} ({(adjFile.size / 1024).toFixed(1)} KB)
+              </span>
+            )}
+            {adjMsg && (
+              <span className={adjStatus === "error" ? "p2-partition-warn" : "p2-partition-hint"}>
+                {adjMsg}
+              </span>
+            )}
+          </div>
+          <div className="p2-partition-actions">
+            <input
+              ref={adjInputRef}
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              onChange={onAdjPick}
+              hidden
+            />
+            <button
+              type="button"
+              className="p2-reset-btn"
+              onClick={() => adjInputRef.current?.click()}
+            >
+              {adjFile ? "Change Near-Mandal File" : "Browse Near-Mandal File"}
+            </button>
+            <button
+              type="button"
+              className="p2-partition-btn"
+              onClick={uploadAdjFile}
+              disabled={!adjFile || adjStatus === "uploading"}
+            >
+              {adjStatus === "uploading" ? (
+                <span className="p1-spinner" aria-hidden="true" />
+              ) : (
+                <CloudUpIcon />
+              )}
+              Upload Near Mandals
+            </button>
+          </div>
+        </section>
+
 
         {/* result */}
         <section className="p1-result">
@@ -960,13 +990,6 @@ export default function Phase2({ context = "municipal" }) {
                 onClick={() => { setRoleFilter("micro"); setPage(1); }}
               >
                 <BadgeIcon /> Micro Observers <b>({microCount})</b>
-              </button>
-              <button
-                type="button"
-                className={`p1-chip p2-chip-sub${roleFilter === "substitute" ? " is-active" : ""}`}
-                onClick={() => { setRoleFilter("substitute"); setPage(1); }}
-              >
-                <BadgeIcon /> Substitutes (20%) <b>({substituteCount})</b>
               </button>
             </div>
 
@@ -1023,13 +1046,7 @@ export default function Phase2({ context = "municipal" }) {
                 <span className="p1-stat-num">{partitioned ? microCount : "—"}</span>
               </div>
             </div>
-            <div className="p1-stat p2-stat-sub">
-              <span className="p1-stat-icon"><BadgeIcon /></span>
-              <div className="p1-stat-meta">
-                <span className="p1-stat-label">Substitutes (20%)</span>
-                <span className="p1-stat-num">{partitioned ? substituteCount : "—"}</span>
-              </div>
-            </div>
+
             <div className="p1-stat p1-stat-review">
               <span className="p1-stat-icon"><CheckIcon /></span>
               <div className="p1-stat-meta">

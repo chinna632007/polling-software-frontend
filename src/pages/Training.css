@@ -433,6 +433,7 @@ input[type="time"].tr-cell-input { min-width: 110px; }
 }
 .tr-group-po { background: #e3f0fd; color: #0b5fa8; border-color: #bfe3fd; }
 .tr-group-apo { background: #f3f0fd; color: #5b4fc8; border-color: #d3cdfd; }
+.tr-group-opo { background: #fdf3e7; color: #a86a0b; border-color: #f5ddb9; }
 
 .tr-table .tr-venue-badge {
   display: inline-flex;

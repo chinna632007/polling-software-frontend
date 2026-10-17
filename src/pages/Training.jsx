@@ -314,10 +314,11 @@ export default function Training() {
       </div>
         <section className="p1-card" aria-label="Training orders">
           <div className="p1-card-head">
-            <span className="p1-card-title">Training orders (PO / APO)</span>
+            <span className="p1-card-title">Training orders (PO / APO / OPO)</span>
           </div>
           <p className="tr-hint" style={{ marginBottom: 12 }}>
-            After Stage 3: Allocate splits officers by duty mandal (PO = team heads, APO = other teammates, MO skipped).
+            After Stage 3: Allocate splits officers by duty mandal (PO = team heads, APO = the 4th Polling Officer slot,
+            OPO = other Presiding Officers — Voter ID / Ink / MPTC / Incharge; MO skipped).
             Assign venues, Generate letters from built-in templates, then Download ZIP.
             Date/time/district come from server <code>.env</code>.
             {locCount != null && (
@@ -386,11 +387,17 @@ export default function Training() {
             <button type="button" className="p1-mini-btn" disabled={generating} onClick={() => runGenerate("APO")}>
               {generating ? "Generating…" : "Generate APO orders"}
             </button>
+            <button type="button" className="p1-mini-btn" disabled={generating} onClick={() => runGenerate("OPO")}>
+              {generating ? "Generating…" : "Generate OPO orders"}
+            </button>
             <button type="button" className="p1-mini-btn" disabled={zipping} onClick={() => runZip("PO")}>
               {zipping ? "Zipping…" : "Download PO ZIP"}
             </button>
             <button type="button" className="p1-mini-btn" disabled={zipping} onClick={() => runZip("APO")}>
               {zipping ? "Zipping…" : "Download APO ZIP"}
+            </button>
+            <button type="button" className="p1-mini-btn" disabled={zipping} onClick={() => runZip("OPO")}>
+              {zipping ? "Zipping…" : "Download OPO ZIP"}
             </button>
             <button type="button" className="p1-mini-btn" disabled={zipping} onClick={() => runZip("ALL")}>
               {zipping ? "Zipping…" : "Download ALL ZIP"}
@@ -406,6 +413,7 @@ export default function Training() {
               <option value="">All groups</option>
               <option value="PO">PO</option>
               <option value="APO">APO</option>
+              <option value="OPO">OPO</option>
             </select>
           </div>
           {allocateMsg && <div className="p1-note" role="status">{allocateMsg}</div>}
@@ -434,7 +442,7 @@ export default function Training() {
                     <td className="tr-cell">{o.sl_no ?? "—"}</td>
                     <td className="tr-cell">{o.order_id}</td>
                     <td className="tr-cell">
-                      <span className={`tr-group-badge ${o.training_group === "APO" ? "tr-group-apo" : "tr-group-po"}`}>{o.training_group}</span>
+                      <span className={`tr-group-badge ${o.training_group === "APO" ? "tr-group-apo" : o.training_group === "OPO" ? "tr-group-opo" : "tr-group-po"}`}>{o.training_group}</span>
                     </td>
                     <td className="tr-cell">{o.employee_id || "—"}</td>
                     <td className="tr-cell">{o.employee_name || "—"}</td>
@@ -486,10 +494,11 @@ export default function Training() {
                 setMembers([]);
                 loadBatches(g);
               }}
-              aria-label="PO or APO training phase"
+              aria-label="PO, APO or OPO training phase"
             >
               <option value="PO">PO Training Phase</option>
               <option value="APO">APO Training Phase</option>
+              <option value="OPO">OPO Training Phase</option>
             </select>
             <span className="tr-hint">Grouped by duty mandal (not work/native). Max 100 per batch.</span>
           </div>
@@ -585,6 +594,7 @@ export default function Training() {
                       <th>Duty mandal (Stage 3)</th>
                       <th>Booth (Stage 3)</th>
                       <th>Work mandal</th>
+                      <th>Working Office Address</th>
                       <th>Mobile</th>
                     </tr>
                   </thead>
@@ -599,6 +609,7 @@ export default function Training() {
                         <td className="tr-cell">{m.duty_mandal || "—"}</td>
                         <td className="tr-cell">{m.venue_code || "—"}</td>
                         <td className="tr-cell">{m.work_mandal || "—"}</td>
+                        <td className="tr-cell">{m.working_office_address || "—"}</td>
                         <td className="tr-cell">{m.mobile_no || "—"}</td>
                       </tr>
                     ))}

@@ -155,6 +155,22 @@ export function uploadTrainingSessions(file, signal) {
   );
 }
 
+/** Upload mandal-adjacency workbook (Mandal_Name, Near_Mandal_Names).
+ * Replaces the whole table — drives near-mandal posting (Stage 2 + Stage 3). */
+export function uploadMandalAdjacency(file, signal) {
+  return fileToBase64(file).then((dataBase64) =>
+    request(
+      "/imports/mandal-adjacency",
+      { method: "POST", body: { fileName: file.name, dataBase64 }, signal }
+    )
+  );
+}
+
+/** Read the current mandal-adjacency table (count + rows). */
+export function listMandalAdjacency(signal) {
+  return request("/imports/mandal-adjacency", { method: "GET", signal });
+}
+
 /** List training locations (venues). */
 export const listTrainingLocations = () => request("/imports/training-locations");
 
@@ -234,6 +250,17 @@ export const sendNotifications = (body) =>
 /** Delivery-attempt records (authority/admin). */
 export const notificationDeliveries = () => request('/notifications/deliveries');
 
+/**
+ * Send the Stage-3 duty notification for ONE team (authority/admin).
+ * The server loads members + mobiles from the frozen roster, so the body
+ * only carries the team code plus the explicit confirmation flag.
+ */
+export const sendTeamNotification = (teamCode) =>
+  request('/notifications/send-team', {
+    method: 'POST',
+    body: { teamCode, confirmAllocation: true },
+  });
+
 /* -------------------------------- Reports -------------------------------- */
 
 /** Last allocation run report (authority/admin). */
@@ -306,10 +333,6 @@ export const deleteOrderAssignment = (id) =>
 /** Generate the order .docx for an appointment (returns base64). */
 export const generateOrder = (id) =>
   request(`/imports/order-assignments/${id}/generate`, { method: 'POST' });
-
-/** Generate the order .docx AND email it as an attachment. */
-export const generateAndSendOrder = (id) =>
-  request(`/imports/order-assignments/${id}/generate-and-send`, { method: 'POST' });
 
 /** Edit a personnel record (authority/admin). Allow-listed fields only. */
 export const editPersonnel = (id, body) =>

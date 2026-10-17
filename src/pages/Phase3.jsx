@@ -1,8 +1,8 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import "./Phase1.css"; // reuse shared chrome (page, shell, breadcrumb, title, stats, table, pagination, search, upload cards…)
 import "./Phase3.css"; // Phase 3 specifics (allocate button, allocation badges, slot table)
 import Header from "../components/Header.jsx";
-import { allocateBallots } from "../api/client.js";
+import { allocateBallots, allocationReport, sendTeamNotification } from "../api/client.js";
 
 /**
  * Phase 3 – Ballot Allocation
@@ -41,17 +41,6 @@ function HomeIcon() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M3 9.5 12 3l9 6.5" />
       <path d="M5 10v10a1 1 0 0 0 1 1h3v-6h6v6h3a1 1 0 0 0 1-1V10" />
-    </svg>
-  );
-}
-
-function PeopleIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M17 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-      <circle cx="9.5" cy="7" r="4" />
-      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
     </svg>
   );
 }
@@ -225,18 +214,40 @@ function pageList(current, total) {
   return out;
 }
 
-/** Read the Presiding / Polling officers saved by Phase 2. */
+/** Read the Presiding / APO / Polling officers saved by Phase 2.
+ *  APO (Assistant Presiding Officer) is split out of the generic
+ *  "Polling Officer" bucket so it shows distinctly instead of being
+ *  lumped in with normal polling officers.
+ */
+function isApo(row) {
+  const role = String(row?.role ?? "").toLowerCase();
+  const teamRole = String(row?.teamRole ?? "").toLowerCase();
+  const designation = String(row?.designation ?? "").toLowerCase();
+  return (
+    role.includes("apo") ||
+    role.includes("assistant presiding") ||
+    teamRole.includes("apo") ||
+    teamRole.includes("assistant presiding") ||
+    designation.includes("apo") ||
+    designation.includes("assistant presiding")
+  );
+}
+
+/** Read the Presiding / APO / Polling officers saved by Phase 2. */
 function loadOfficers(context) {
   try {
     const raw = sessionStorage.getItem(PHASE2_STORE_KEY(context));
-    if (!raw) return { presiding: [], polling: [], hasOfficers: false };
+    if (!raw) return { presiding: [], apo: [], polling: [], hasOfficers: false };
     const rows = JSON.parse(raw);
-    if (!Array.isArray(rows)) return { presiding: [], polling: [], hasOfficers: false };
+    if (!Array.isArray(rows)) return { presiding: [], apo: [], polling: [], hasOfficers: false };
     const presiding = rows.filter((r) => r.role === "Presiding Officer").map((r) => r.employeeName);
-    const polling = rows.filter((r) => r.role === "Polling Officer").map((r) => r.employeeName);
-    return { presiding, polling, hasOfficers: presiding.length + polling.length > 0 };
+    const apo = rows.filter((r) => r.role !== "Presiding Officer" && isApo(r)).map((r) => r.employeeName);
+    const polling = rows.filter(
+      (r) => r.role !== "Presiding Officer" && !isApo(r) && (r.role === "Polling Officer" || !r.role)
+    ).map((r) => r.employeeName);
+    return { presiding, apo, polling, hasOfficers: presiding.length + apo.length + polling.length > 0 };
   } catch {
-    return { presiding: [], polling: [], hasOfficers: false };
+    return { presiding: [], apo: [], polling: [], hasOfficers: false };
   }
 }
 
@@ -316,6 +327,84 @@ export default function Phase3({ context = "municipal" }) {
 
   // Presiding / Polling officers from Phase 2.
   const officers = useMemo(() => loadOfficers(context), [context]);
+
+  // Duty allocation (Stage 2 teams -> Stage 3 station allotment) from the last
+  // run — verification view. Loaded once; the send button posts per team.
+  const [duty, setDuty] = useState(null); // { runAt, stage2, stage3, counts }
+  const [dutyError, setDutyError] = useState("");
+  const [sendState, setSendState] = useState({}); // teamCode -> { pending, msg, tone }
+
+  useEffect(() => {
+    let cancelled = false;
+    allocationReport()
+      .then((data) => {
+        if (!cancelled) setDuty(data);
+      })
+      .catch((e) => {
+        if (!cancelled) setDutyError(e.message || "Failed to load duty allocation");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // One row per Stage-2 team with its Stage-3 station joined by teamCode.
+  // Members carry the full officer allocation profile (employee ID, designation,
+  // MO flag, venue/ballot code + duty mandal from the frozen roster).
+  const dutyRows = useMemo(() => {
+    const parties = duty?.stage2?.parties || [];
+    const assigns = duty?.stage3?.assignments || [];
+    const byTeam = new Map(assigns.map((a) => [a.teamCode, a]));
+    return parties.map((p) => {
+      const members = (p.members || [])
+        .map((m) => ({
+          employeeId: m.employeeId ?? m.employee_id ?? m.personnelId ?? null,
+          name: m.name,
+          role: m.role,
+          designation: m.designation,
+          isMicroObserver: !!m.isMicroObserver,
+          venueCode: m.venueCode ?? m.venue_code ?? null,
+          dutyMandal: m.dutyMandal ?? m.duty_mandal ?? null,
+        }))
+        .filter((m) => m.name || m.employeeId);
+      return { ...p, members, assignment: byTeam.get(p.teamCode) || null };
+    });
+  }, [duty]);
+
+  async function onSendNotification(teamCode, memberCount) {
+    const confirmed = window.confirm(
+      `Send the duty notification for team ${teamCode} to ${memberCount} member(s) via the configured channels (SMS / WhatsApp)?`
+    );
+    if (!confirmed) return;
+    setSendState((s) => ({ ...s, [teamCode]: { pending: true, msg: "" } }));
+    try {
+      const res = await sendTeamNotification(teamCode);
+      const sum = res.summary || {};
+      const by = sum.byChannel || {};
+      const bits = [];
+      for (const ch of ["sms", "whatsapp"]) {
+        if (!by[ch]) continue;
+        const c = by[ch];
+        let bit = `${ch.toUpperCase()}: ${c.delivered || 0} delivered`;
+        if (c.failed) bit += `, ${c.failed} failed`;
+        if (c.unavailable) bit += `, ${c.unavailable} unavailable`;
+        bits.push(bit);
+      }
+      setSendState((s) => ({
+        ...s,
+        [teamCode]: {
+          pending: false,
+          msg: bits.join(" · ") || `Sent ${sum.sent || 0} message(s)`,
+          tone: (sum.failed || 0) > 0 ? "warn" : "ok",
+        },
+      }));
+    } catch (e) {
+      setSendState((s) => ({
+        ...s,
+        [teamCode]: { pending: false, msg: e.message || "Send failed", tone: "warn" },
+      }));
+    }
+  }
 
   // Single upload slot: ballot register only.
   const [ballotFile, setBallotFile] = useState(null);
@@ -566,16 +655,16 @@ export default function Phase3({ context = "municipal" }) {
           </div>
           <div className="p3-officer-pills">
             <OfficerCount tone="p3-tone-presiding" icon={<TrophyIcon />} label="Presiding Officers" count={officers.presiding.length} />
+            <OfficerCount tone="p3-tone-apo" icon={<TrophyIcon />} label="APO Officers" count={officers.apo.length} />
             <OfficerCount tone="p3-tone-polling" icon={<BadgeIcon />} label="Polling Officers" count={officers.polling.length} />
           </div>
           {!officers.hasOfficers && (
             <p className="p3-officers-warn">
-              No Presiding/Polling officers found. Complete Phase 2 so the backend has officers to
+              No Presiding/APO/Polling officers found. Complete Phase 2 so the backend has officers to
               allocate to — though you may still upload files and allocate.
             </p>
           )}
         </section>
-
 
         {/* single upload: ballot register only */}
         <section className="p3-upload-grid p3-upload-single">
@@ -846,6 +935,84 @@ export default function Phase3({ context = "municipal" }) {
               </div>
             </div>
           </section>
+          {/* Duty allocation (Stage 2 -> Stage 3): team data shown below the
+               results table, only after Allocate has run. */}
+          {status === "done" && duty && dutyRows.length > 0 && (
+            <section className="p3-duty">
+              <div className="p3-officers-head">
+                <span className="p3-officers-title">Duty Allocation (Stage 2 → Stage 3)</span>
+                {duty?.runAt && (
+                  <span className="p3-officer-pill-label">
+                    Last run: {new Date(duty.runAt).toLocaleString("en-IN")}
+                    {duty.stage3?.status ? ` · Stage 3: ${duty.stage3.status}` : ""}
+                    {duty.stage3?.publicationStatus ? ` · ${duty.stage3.publicationStatus}` : ""}
+                  </span>
+                )}
+              </div>
+              {dutyError && <div className="p1-note">⚠ {dutyError}</div>}
+              <div className="p1-table-wrap">
+                <table className="p1-table p3-table">
+                  <thead>
+                    <tr>
+                      <th>Team</th>
+                      <th>Ballot ID</th>
+                      <th>Posting Mandal</th>
+                      <th>Station (Stage 3)</th>
+                      <th>Station Mandal</th>
+                      <th>Members (name — role)</th>
+                      <th>Notification</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dutyRows.map((r) => {
+                      const st = sendState[r.teamCode] || {};
+                      return (
+                        <tr key={r.teamCode}>
+                          <td className="p1-strong p1-mono">{r.teamCode}</td>
+                          <td className="p1-mono">
+                            {r.assignment?.stationId || r.assignment?.ballotId || r.assignment?.venueCode || "—"}
+                            {!r.assignment && <span className="p1-remarks"> (not allotted)</span>}
+                          </td>
+                          <td>{r.postingMandal || "—"}</td>
+                          <td className="p1-mono">
+                            {r.assignment?.stationCode || r.assignment?.stationId || "—"}
+                          </td>
+                          <td>{r.assignment?.stationMandal || "—"}</td>
+                          <td>
+                            {(r.members || []).map((m, i) => (
+                              <div key={`${r.teamCode}-${i}`} className="p1-officer-row">
+                                <span className="p1-mono">{m.employeeId || "—"}</span>
+                                <span className="p1-strong">{m.name || "—"}</span>
+                                <span className="p1-remarks">— {m.role}</span>
+                                {m.isMicroObserver ? " (MO)" : ""}
+                                {m.designation ? <span className="p1-remarks">— {m.designation}</span> : ""}
+                              </div>
+                            ))}
+                          </td>
+                          <td>
+                            <button
+                              type="button"
+                              className="p1-mini-btn"
+                              disabled={st.pending}
+                              onClick={() => onSendNotification(r.teamCode, (r.members || []).length)}
+                            >
+                              {st.pending ? "Sending…" : "Send notification"}
+                            </button>
+                            {st.msg && (
+                              <div className="p1-note">
+                                {st.tone === "warn" ? "⚠ " : ""}
+                                {st.msg}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
         )}
       </div>
     </main>
