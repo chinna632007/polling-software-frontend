@@ -372,6 +372,39 @@ export const listTrainingOrders = (params) => {
   return request(`/imports/training-orders${qs ? `?${qs}` : ''}`);
 };
 
+/* ------------------------------ Settings ------------------------------- */
+
+/** List admin-editable customization knobs (staff sees the public subset). */
+export const listSettings = () => request('/settings');
+
+/** Update one setting by key. Body: { value }. */
+export const updateSetting = (key, value) =>
+  request(`/settings/${encodeURIComponent(key)}`, {
+    method: 'PATCH',
+    body: { value },
+  });
+
+/** Recent setting changes audit trail (authority/admin). */
+export const listSettingChanges = (limit) =>
+  request(`/settings/changes${limit ? `?limit=${encodeURIComponent(String(limit))}` : ''}`);
+
+/* ------------------------------ Fields ------------------------------- */
+
+/** List admin-definable fields for an entity (personnel|station). */
+export const listFields = (entity) => request(`/fields/${encodeURIComponent(entity)}`);
+
+/** Create a custom field. */
+export const createField = (input) =>
+  request("/fields", { method: "POST", body: input });
+
+/** Update a field by id (core fields: label/export only). */
+export const updateField = (id, input) =>
+  request(`/fields/${encodeURIComponent(id)}`, { method: "PATCH", body: input });
+
+/** Soft-deactivate a custom field. */
+export const deactivateField = (id) =>
+  request(`/fields/${encodeURIComponent(id)}`, { method: "DELETE" });
+
 export const listPoApoBatches = (group) =>
   request(`/imports/training-orders/batches?group=${encodeURIComponent(group)}`);
 

@@ -279,6 +279,33 @@ const phases = [
     link: "/elections/panchayat/training",
     art: <TrainingArt />,
   },
+  {
+    id: "settings",
+    badge: "⚙",
+    title: "Settings",
+    description: "Customize limits, notifications, documents, election rules and portal branding.",
+    theme: "phase-slate",
+    link: "/elections/panchayat/settings",
+    art: <ClipboardArt />,
+  },
+  {
+    id: "fields-personnel",
+    badge: "📋",
+    title: "Personnel fields",
+    description: "Custom data fields for officer import, validation & export.",
+    theme: "phase-purple",
+    link: "/elections/panchayat/fields/personnel",
+    art: <ClipboardArt />,
+  },
+  {
+    id: "fields-station",
+    badge: "🏛️",
+    title: "Station fields",
+    description: "Custom data fields for polling-station import, validation & export.",
+    theme: "phase-purple",
+    link: "/elections/panchayat/fields/station",
+    art: <ClipboardArt />,
+  },
 ];
 
 function PhaseCard({ phase }) {

@@ -465,6 +465,10 @@ function RoleBadge({ role }) {
     // never lumped with the OPO ("normal polling officer") group.
     return (
       <span className="p1-badge p2-badge-apo">
+        <BadgeIcon /> {role}
+      </span>
+    );
+  }
   if (role === "Micro Observer") {
     return (
       <span className="p1-badge p2-badge-mo">
@@ -472,8 +476,7 @@ function RoleBadge({ role }) {
       </span>
     );
   }
-  // Any numbered 1st–4th Polling Officer reads as the OPO polling group.
-  // Any numbered 1st–5th Polling Officer reads as the polling group.
+  // Any numbered Polling Officer (1st–5th) reads as the polling group.
   return (
     <span className="p1-badge p2-badge-polling">
       <BadgeIcon /> {role}

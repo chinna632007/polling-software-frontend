@@ -77,7 +77,6 @@ function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
   const [captcha, setCaptcha] = useState("");
   const [captchaNonce, setCaptchaNonce] = useState(0); // bump to reload the SVG
   const [error, setError] = useState("");
@@ -157,18 +156,7 @@ function Login() {
             </button>
           </label>
 
-          <div className="login-options">
-            <label className="remember-me">
-              <input
-                type="checkbox"
-                checked={rememberMe}
-                onChange={(event) => setRememberMe(event.target.checked)}
-              />
-              Remember Me
-            </label>
-
             <a href="/forgot-password">Forgot Password?</a>
-          </div>
 
           <CaptchaImage key={captchaNonce} onError={setError} />
 

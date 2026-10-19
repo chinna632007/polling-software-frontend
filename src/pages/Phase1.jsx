@@ -619,7 +619,7 @@ export default function Phase1({ context = "municipal" }) {
     if (inputRef.current) inputRef.current.value = "";
   }
 
-  const rows = result?.rows ?? [];
+  const rows = useMemo(() => result?.rows ?? [], [result]);
   const summary = result?.summary ?? { total: 0, approved: 0, rejected: 0, needsReview: 0 };
 
   const filtered = useMemo(() => {

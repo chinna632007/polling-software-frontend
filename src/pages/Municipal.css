@@ -485,6 +485,15 @@ body:has(.municipal-page) {
   background: linear-gradient(180deg, #ffffff 0%, #f8f5ff 100%);
 }
 
+.phase-slate {
+  --accent: #3d5a80;
+  --accent-dark: #2f4768;
+  --dark: #1d2d44;
+  --wave: #d6e2f0;
+  border-color: #ccd9ea;
+  background: linear-gradient(180deg, #ffffff 0%, #f4f8fc 100%);
+}
+
 .phase-visual {
   position: relative;
   z-index: 1;

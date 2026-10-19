@@ -31,7 +31,7 @@ const USE_MOCK = false;
 const ACCEPTED = [".xlsx", ".xls", ".csv"];
 const PAGE_SIZE = 10;
 const PHASE2_STORE_KEY = (context) => `elections:${context}:phase2-partition`;
-/** Training page reads the allocated teams from here (no re-upload needed). */
+/** Last allocation snapshot — restored on reload/remount (no re-allocate needed). */
 export const PHASE3_STORE_KEY = (context) => `elections:${context}:phase3-result`;
 
 /* ------------------------------- icons -------------------------------- */
@@ -147,6 +147,17 @@ function LinkIcon() {
   );
 }
 
+function PeopleIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9.5" cy="7" r="4" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  );
+}
+
 /* ------------------------------- helpers ------------------------------ */
 
 function pick(obj, ...keys) {
@@ -257,40 +268,6 @@ function loadOfficers(context) {
     };
   } catch {
     return { presiding: [], polling: [], apo: [], opo: [], na: [], hasOfficers: false };
-/** Read the Presiding / APO / Polling officers saved by Phase 2.
- *  APO (Assistant Presiding Officer) is split out of the generic
- *  "Polling Officer" bucket so it shows distinctly instead of being
- *  lumped in with normal polling officers.
- */
-function isApo(row) {
-  const role = String(row?.role ?? "").toLowerCase();
-  const teamRole = String(row?.teamRole ?? "").toLowerCase();
-  const designation = String(row?.designation ?? "").toLowerCase();
-  return (
-    role.includes("apo") ||
-    role.includes("assistant presiding") ||
-    teamRole.includes("apo") ||
-    teamRole.includes("assistant presiding") ||
-    designation.includes("apo") ||
-    designation.includes("assistant presiding")
-  );
-}
-
-/** Read the Presiding / APO / Polling officers saved by Phase 2. */
-function loadOfficers(context) {
-  try {
-    const raw = sessionStorage.getItem(PHASE2_STORE_KEY(context));
-    if (!raw) return { presiding: [], apo: [], polling: [], hasOfficers: false };
-    const rows = JSON.parse(raw);
-    if (!Array.isArray(rows)) return { presiding: [], apo: [], polling: [], hasOfficers: false };
-    const presiding = rows.filter((r) => r.role === "Presiding Officer").map((r) => r.employeeName);
-    const apo = rows.filter((r) => r.role !== "Presiding Officer" && isApo(r)).map((r) => r.employeeName);
-    const polling = rows.filter(
-      (r) => r.role !== "Presiding Officer" && !isApo(r) && (r.role === "Polling Officer" || !r.role)
-    ).map((r) => r.employeeName);
-    return { presiding, apo, polling, hasOfficers: presiding.length + apo.length + polling.length > 0 };
-  } catch {
-    return { presiding: [], apo: [], polling: [], hasOfficers: false };
   }
 }
 
@@ -611,7 +588,7 @@ export default function Phase3({ context = "municipal" }) {
       .replace(/'/g, "&#039;");
   }
 
-  const rows = result?.rows ?? [];
+  const rows = useMemo(() => result?.rows ?? [], [result]);
   const summary = result?.summary ?? { totalBallots: 0, allocated: 0, presidingCount: 0, pollingCount: 0 };
 
   const filtered = useMemo(() => {
@@ -1017,6 +994,7 @@ export default function Phase3({ context = "municipal" }) {
               )}
             </div>
           </section>
+        )}
           {/* Duty allocation (Stage 2 -> Stage 3): team data shown below the
                results table, only after Allocate has run. */}
           {status === "done" && duty && dutyRows.length > 0 && (
@@ -1095,7 +1073,6 @@ export default function Phase3({ context = "municipal" }) {
               </div>
             </section>
           )}
-        )}
       </div>
     </main>
   );

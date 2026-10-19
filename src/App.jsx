@@ -6,6 +6,8 @@ import Phase1 from "./pages/Phase1.jsx";
 import Phase2 from "./pages/Phase2.jsx";
 import Phase3 from "./pages/Phase3.jsx";
 import Training from "./pages/Training.jsx";
+import Settings from "./pages/Settings.jsx";
+import Fields from "./pages/Fields.jsx";
 
 function App() {
   const path = window.location.pathname;
@@ -40,6 +42,24 @@ function App() {
   }
   if (path.startsWith("/elections/panchayat/training")) {
     return <Training context="panchayat" />;
+  }
+
+  // Fields — Data schema customization (admin knobs, no code changes)
+  if (path.startsWith("/elections/municipal/fields")) {
+    const entity = path.endsWith("/personnel") ? "personnel" : "station";
+    return <Fields entity={entity} />;
+  }
+  if (path.startsWith("/elections/panchayat/fields")) {
+    const entity = path.endsWith("/personnel") ? "personnel" : "station";
+    return <Fields entity={entity} />;
+  }
+
+  // Settings — Customization Center (admin knobs, no code changes)
+  if (path.startsWith("/elections/municipal/settings")) {
+    return <Settings />;
+  }
+  if (path.startsWith("/elections/panchayat/settings")) {
+    return <Settings />;
   }
 
   // Municipal elections pages

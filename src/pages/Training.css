@@ -40,6 +40,110 @@
   color: #40628a;
 }
 
+.tr-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 4px;
+  border-top: 1px solid #e5edf5;
+  flex-wrap: wrap;
+}
+
+.tr-setting-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tr-setting-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #243b57;
+}
+
+.tr-setting-key {
+  font-size: 12px;
+  color: #7a8ca3;
+}
+
+.tr-setting-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tr-setting-input {
+  min-width: 220px;
+  padding: 8px 10px;
+  border: 1px solid #c6d6ea;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.tr-field-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid #dbe8f6;
+  border-radius: 8px;
+  background: #fff;
+  flex-wrap: wrap;
+}
+
+.tr-field-handle {
+  color: #9aa9b8;
+  font-size: 14px;
+  user-select: none;
+}
+
+.tr-field-key {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: #5a6f86;
+  min-width: 110px;
+}
+
+.tr-field-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.tr-field-badge-core {
+  background: #e6e9ee;
+  color: #5a6f86;
+}
+
+.tr-field-badge-custom {
+  background: #d6e2f0;
+  color: #3d5a80;
+}
+
+.tr-field-input {
+  min-width: 140px;
+  padding: 6px 8px;
+  border: 1px solid #c6d6ea;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+@media (max-width: 720px) {
+  .tr-field-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .tr-field-input {
+    min-width: 0;
+    width: 100%;
+  }
+}
+
+
 .tr-input {
   padding: 10px 12px;
   border-radius: 10px;

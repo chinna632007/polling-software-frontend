@@ -279,9 +279,43 @@ const phases = [
     link: "/elections/municipal/training",
     art: <TrainingArt />,
   },
+  {
+    id: "settings",
+    badge: "⚙",
+    title: "Settings",
+    description: "Customize limits, notifications, documents, election rules and portal branding.",
+    theme: "phase-slate",
+    link: "/elections/municipal/settings",
+    art: <ClipboardArt />,
+  },
+  {
+    id: "fields-personnel",
+    badge: "📋",
+    title: "Personnel fields",
+    description: "Custom data fields for officer import, validation & export.",
+    theme: "phase-purple",
+    link: "/elections/municipal/fields/personnel",
+    art: <ClipboardArt />,
+  },
+  {
+    id: "fields-station",
+    badge: "🏛️",
+    title: "Station fields",
+    description: "Custom data fields for polling-station import, validation & export.",
+    theme: "phase-purple",
+    link: "/elections/municipal/fields/station",
+    art: <ClipboardArt />,
+  },
 ];
 
 function PhaseCard({ phase }) {
+  const navigate = (href) => {
+    // Use HTML5 history pushState so no full page reload happens
+    // (backend serves index.html for all frontend routes)
+    window.history.pushState(null, '', href);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  };
+
   return (
     <article className={`phase-card ${phase.theme}`}>
       <div className="phase-visual">
@@ -299,6 +333,10 @@ function PhaseCard({ phase }) {
         className="phase-cta"
         href={phase.link}
         aria-label={`View details for ${phase.title}`}
+        onClick={(e) => {
+          e.preventDefault();
+          navigate(phase.link);
+        }}
       >
         Explore
         <span className="phase-arrow" aria-hidden="true">

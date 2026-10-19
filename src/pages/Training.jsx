@@ -43,14 +43,16 @@ function UsersIcon() {
   );
 }
 
-export default function Training() {
+export default function Training({ context } = {}) {
   const [batchGroup, setBatchGroup] = useState("PO");
   const [batches, setBatches] = useState([]);
 
-  // Derive the election context (municipal / panchayat) from the route so the
-  // back button returns to the right election home page.
-  const path = window.location.pathname;
-  const isMunicipal = path.startsWith("/elections/municipal");
+  const selected = batches.find((b) => String(b.id) === String(selectedBatchId)) || null;
+
+  // Derive the election context (municipal / panchayat) from the prop; fall
+  // back to the route so the back button returns to the right election home page.
+  const path = typeof window !== "undefined" ? window.location.pathname : "";
+  const isMunicipal = context === "municipal" || (context == null && path.startsWith("/elections/municipal"));
   const contextLabel = isMunicipal ? "Municipal" : "Panchayat";
   const backHref = isMunicipal ? "/elections/municipal" : "/elections/panchayat";
   const [members, setMembers] = useState([]);
@@ -81,10 +83,10 @@ export default function Training() {
 
   const loadOrders = async (group) => {
     try {
-      setError(null);
       const data = await listTrainingOrders({ group: group || undefined, perPage: 100 });
       setOrders(data.orders || []);
       setOrdersTotal(data.total ?? (data.orders || []).length);
+      setError(null);
     } catch (e) {
       setError(e.message || "Failed to load training orders");
     }
@@ -225,6 +227,7 @@ export default function Training() {
       setUploadingSess(true);
       const data = await uploadTrainingSessions(file);
       const n = data.count ?? data.replaced ?? data.acceptedRows ?? 0;
+      setSessCount(n);
       setSessMsg(`Uploaded ${n} training session${n === 1 ? "" : "s"}.`);
       try {
         const locs = await listTrainingLocations();
@@ -271,26 +274,29 @@ export default function Training() {
   };
 
   const paginated = members.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const selected = batches.find((b) => b.id === selectedBatchId);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const [batchData, locData] = await Promise.all([
+        const [batchData, locData, orderData] = await Promise.all([
           listPoApoBatches(batchGroup),
           listTrainingLocations().catch(() => null),
+          listTrainingOrders({ perPage: 100 }).catch(() => null),
         ]);
         if (cancelled) return;
         setBatches(Array.isArray(batchData?.batches) ? batchData.batches : []);
         if (locData) setLocCount(locData.count ?? (locData.locations || []).length);
+        if (orderData) {
+          setOrders(orderData.orders || []);
+          setOrdersTotal(orderData.total ?? (orderData.orders || []).length);
+        }
       } catch (e) {
         if (!cancelled) setError(e.message || "Failed to load batches");
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
-    loadOrders("");
     return () => {
       cancelled = true;
     };
@@ -340,6 +346,11 @@ export default function Training() {
                 }}
               />
             </label>
+            {locMsg && (
+              <span className="tr-hint" role="status" style={{ marginLeft: 10 }}>
+                {locMsg}
+              </span>
+            )}
             <label className="p1-mini-btn" style={{ cursor: uploadingSess ? "wait" : "pointer", marginLeft: 6 }}>
               {uploadingSess ? "Uploading…" : "Upload sessions (schedule)"}
               <input
@@ -354,6 +365,11 @@ export default function Training() {
                 }}
               />
             </label>
+            {sessMsg && (
+              <span className="tr-hint" role="status" style={{ marginLeft: 10 }}>
+                {sessMsg}
+              </span>
+            )}
             {sessCount != null && (
               <span className="tr-hint" style={{ marginLeft: 10 }}>
                 Training sessions loaded: <strong>{sessCount}</strong>.
