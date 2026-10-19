@@ -3,6 +3,8 @@ import "./Phase1.css"; // reuse shared chrome (page, shell, breadcrumb, title, s
 import "./Phase3.css"; // Phase 3 specifics (allocate button, allocation badges, slot table)
 import Header from "../components/Header.jsx";
 import { allocateBallots, allocationReport, sendTeamNotification } from "../api/client.js";
+import { navigate } from "../api/router.jsx";
+import { SpaLink } from "../api/SpaLink.jsx";
 
 /**
  * Phase 3 – Ballot Allocation
@@ -534,7 +536,7 @@ export default function Phase3({ context = "municipal" }) {
   /** Continue to the Training page (assign venues / generate training orders). */
   const goToTraining = () => {
     if (!result || status === "allocating") return;
-    window.location.href = `${backHref}/training`;
+    navigate(`${backHref}/training`);
   };
 
   /** Print ID cards for the currently allocated officers. */
@@ -626,11 +628,11 @@ export default function Phase3({ context = "municipal" }) {
       <div className="p1-shell">
         {/* breadcrumb */}
         <nav className="p1-breadcrumb" aria-label="Breadcrumb">
-          <a href="/home" className="p1-crumb-home" aria-label="Home">
+          <SpaLink href="/home" className="p1-crumb-home" aria-label="Home">
             <HomeIcon />
-          </a>
+          </SpaLink>
           <span className="p1-crumb-sep">/</span>
-          <a href={backHref}>{contextLabel}</a>
+          <SpaLink href={backHref}>{contextLabel}</SpaLink>
           <span className="p1-crumb-sep">/</span>
           <span>Phase 3</span>
           <span className="p1-crumb-sep">/</span>
@@ -668,9 +670,9 @@ export default function Phase3({ context = "municipal" }) {
           <div className="p3-officers-head">
             <span className="p3-officers-title">Officers from Phase 2</span>
             {!officers.hasOfficers && (
-              <a className="p3-officers-link" href={`${backHref}/phase-2`}>
+              <SpaLink className="p3-officers-link" href={`${backHref}/phase-2`}>
                 Run Phase 2 first to assign officers →
-              </a>
+              </SpaLink>
             )}
           </div>
           <div className="p3-officer-pills">

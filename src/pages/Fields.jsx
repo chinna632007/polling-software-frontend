@@ -8,6 +8,8 @@
 import { useEffect, useState } from "react";
 import "./Training.css";
 import Header from "../components/Header.jsx";
+import { SpaLink } from "../api/SpaLink.jsx";
+import { usePathname } from "../api/use-pathname.js";
 import {
   listFields,
   createField,
@@ -40,7 +42,6 @@ function FieldRow({
   onMove,
 }) {
   const [label, setLabel] = useState(field.label ?? "");
-  const [dataType, setDataType] = useState(field.dataType ?? "string");
   const [importColumn, setImportColumn] = useState(
     field.importColumn ?? ""
   );
@@ -58,10 +59,11 @@ function FieldRow({
       return;
     }
 
+    const isEnum = (field.dataType ?? "string") === "enum";
     const enumOptions =
-      dataType === "enum" ? parseEnumOptions(enumStr) : null;
+      isEnum ? parseEnumOptions(enumStr) : null;
 
-    if (dataType === "enum" && enumOptions.length === 0) {
+    if (isEnum && enumOptions.length === 0) {
       alert("Please enter at least one choice-list option.");
       return;
     }
@@ -69,16 +71,23 @@ function FieldRow({
     setSaving(true);
 
     try {
-      const data = await updateField(field.id, {
+      // Backend PATCH accepts only label/exportVisible for core fields;
+      // custom fields additionally accept isRequired/isSensitive/importColumn/
+      // enumOptions/sortOrder. dataType can NEVER be changed (rejected 400).
+      const payload = {
         label: label.trim(),
-        dataType,
-        isRequired: field.isRequired,
-        isSensitive: field.isSensitive,
         exportVisible: field.exportVisible,
-        importColumn: importColumn.trim(),
-        sortOrder: field.sortOrder,
-        enumOptions,
-      });
+      };
+      if (!field.isCore) {
+        payload.isRequired = field.isRequired;
+        payload.isSensitive = field.isSensitive;
+        payload.importColumn = importColumn.trim() || null;
+        payload.sortOrder = field.sortOrder;
+        if ((field.dataType ?? "string") === "enum") {
+          payload.enumOptions = enumOptions;
+        }
+      }
+      const data = await updateField(field.id, payload);
 
       onUpdate(data.field);
     } catch (error) {
@@ -117,10 +126,10 @@ function FieldRow({
 
       <select
         className="tr-field-input"
-        aria-label="Data type"
-        disabled={disabled || saving}
-        value={dataType}
-        onChange={(event) => setDataType(event.target.value)}
+        aria-label="Data type (locked after creation)"
+        disabled
+        value={field.dataType ?? "string"}
+        title="Data type is set at creation and cannot be changed."
       >
         {DATA_TYPES.map((type) => (
           <option key={type} value={type}>
@@ -138,7 +147,7 @@ function FieldRow({
         placeholder="Excel header"
       />
 
-      {dataType === "enum" && (
+      {(field.dataType ?? "string") === "enum" && (
         <input
           className="tr-field-input"
           aria-label="Choice-list options"
@@ -191,6 +200,9 @@ function FieldRow({
 }
 
 export default function Fields({ entity }) {
+  const path = usePathname();
+  const isMunicipal = path.startsWith("/elections/municipal");
+  const backHref = isMunicipal ? "/elections/municipal" : "/elections/panchayat";
   const [fields, setFields] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -268,11 +280,12 @@ export default function Fields({ entity }) {
     setCreating(true);
 
     try {
-      const response = await createField(entity, {
+      const response = await createField({
+        entity,
         fieldKey,
         label,
         dataType: newType,
-        importColumn: importColumn || fieldKey,
+        importColumn: importColumn || null,
         isRequired: false,
         isSensitive: false,
         exportVisible: true,
@@ -371,17 +384,10 @@ export default function Fields({ entity }) {
       await Promise.all(
         updatedOrder.map((field) =>
           updateField(field.id, {
+            // sortOrder is the only thing a reorder changes; core fields
+            // accept label/exportVisible only, so send label (unchanged).
             label: field.label,
-            dataType: field.dataType,
-            isRequired: field.isRequired,
-            isSensitive: field.isSensitive,
-            exportVisible: field.exportVisible,
-            importColumn: field.importColumn ?? "",
-            sortOrder: field.sortOrder,
-            enumOptions:
-              field.dataType === "enum"
-                ? field.enumOptions ?? []
-                : null,
+            ...(field.isCore ? {} : { sortOrder: field.sortOrder }),
           })
         )
       );
@@ -398,15 +404,17 @@ export default function Fields({ entity }) {
 
   return (
     <div>
-      <Header
-        title={`${
-          entity === "personnel"
-            ? "Personnel"
-            : "Polling Station"
-        } fields`}
-      />
+      <Header />
 
       <main className="tr-main">
+        <div className="tr-back-row">
+          <SpaLink className="p1-back-btn" href={backHref}>
+            ← Back
+          </SpaLink>
+          <h1 className="p1-title">
+            {entity === "personnel" ? "Personnel" : "Polling Station"} fields
+          </h1>
+        </div>
         <div className="tr-panel">
           <div className="tr-panel-head">
             <span className="tr-label">Custom fields</span>

@@ -2,6 +2,7 @@
 import "./landing.css";
 import Header from "../components/Header.jsx";
 import FooterWaves from "../components/FooterWaves.jsx";
+import { SpaLink } from "../api/SpaLink.jsx";
 const elections = [
   {
     id: "municipal",
@@ -34,10 +35,10 @@ function ElectionCard({ election }) {
 
       <p>{election.description}</p>
 
-      <a className="details-btn" href={election.link}>
+      <SpaLink className="details-btn" href={election.link}>
         View Details
         <span>→</span>
-      </a>
+      </SpaLink>
     </article>
   );
 }

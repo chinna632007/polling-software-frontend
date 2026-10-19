@@ -3,6 +3,7 @@ import * as XLSX from "xlsx";
 import "./Phase1.css"; // reuse shared chrome (page, shell, breadcrumb, title, stats, table, pagination, search…)
 import "./Phase2.css"; // Phase 2 specifics (team formation bar, presiding/polling chips + role badges, Excel export bar)
 import Header from "../components/Header.jsx";
+import { SpaLink } from "../api/SpaLink.jsx";
 
 import {
   uploadMicroObservers,
@@ -759,11 +760,11 @@ export default function Phase2({ context = "municipal" }) {
       <div className="p1-shell">
         {/* breadcrumb */}
         <nav className="p1-breadcrumb" aria-label="Breadcrumb">
-          <a href="/home" className="p1-crumb-home" aria-label="Home">
+          <SpaLink href="/home" className="p1-crumb-home" aria-label="Home">
             <HomeIcon />
-          </a>
+          </SpaLink>
           <span className="p1-crumb-sep">/</span>
-          <a href={backHref}>{contextLabel}</a>
+          <SpaLink href={backHref}>{contextLabel}</SpaLink>
           <span className="p1-crumb-sep">/</span>
           <span>Phase 2</span>
           <span className="p1-crumb-sep">/</span>
@@ -808,9 +809,9 @@ export default function Phase2({ context = "municipal" }) {
               <strong>Phase 1 – Employee Validation</strong>. Please complete Phase 1
               first by uploading and validating the Employee Excel file.
             </p>
-            <a className="p2-empty-btn" href={`${backHref}/phase-1`}>
+            <SpaLink className="p2-empty-btn" href={`${backHref}/phase-1`}>
               Go to Phase 1 – Employee Validation
-            </a>
+            </SpaLink>
           </section>
         )}
 
@@ -1233,9 +1234,9 @@ export default function Phase2({ context = "municipal" }) {
         {/* continue to Phase 3 */}
         {partitioned && presidingCount + pollingCount > 0 && (
           <div className="p1-next-row">
-            <a className="p1-next-btn" href={`${backHref}/phase-3`}>
+            <SpaLink className="p1-next-btn" href={`${backHref}/phase-3`}>
               Continue to Phase 3 – Ballot Allocation
-            </a>
+            </SpaLink>
           </div>
         )}
         </>

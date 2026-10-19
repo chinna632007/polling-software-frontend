@@ -8,9 +8,10 @@ import Phase3 from "./pages/Phase3.jsx";
 import Training from "./pages/Training.jsx";
 import Settings from "./pages/Settings.jsx";
 import Fields from "./pages/Fields.jsx";
+import { usePathname } from "./api/use-pathname.js";
 
 function App() {
-  const path = window.location.pathname;
+  const path = usePathname();
 
   // Phase 1 – Excel eligible-list upload (dedicated page, shared by both types)
   if (path.startsWith("/elections/municipal/phase-1")) {

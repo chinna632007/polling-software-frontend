@@ -1,6 +1,7 @@
 import "./landing.css";
 import "./Panchayat.css";
 import Header from "../components/Header.jsx";
+import { SpaLink } from "../api/SpaLink.jsx";
 
 function ClipboardArt() {
   return (
@@ -322,7 +323,7 @@ function PhaseCard({ phase }) {
 
       <p>{phase.description}</p>
 
-      <a
+      <SpaLink
         className="phase-cta"
         href={phase.link}
         aria-label={`View details for ${phase.title}`}
@@ -331,7 +332,7 @@ function PhaseCard({ phase }) {
         <span className="phase-arrow" aria-hidden="true">
           →
         </span>
-      </a>
+      </SpaLink>
 
       <svg
         className="card-wave"
@@ -413,13 +414,13 @@ function Panchayat() {
       </section>
 
       <div className="tr-back-row">
-        <a href="/home" aria-label="Back to Election Portal">
+        <SpaLink href="/home" aria-label="Back to Election Portal">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M19 12H5" />
             <path d="m12 19-7-7 7-7" />
           </svg>
           Back to Panchayat Elections
-        </a>
+        </SpaLink>
       </div>
 
       <div className="panchayat-motto">

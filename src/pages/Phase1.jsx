@@ -3,6 +3,7 @@ import "./landing.css";
 import "./Phase1.css";
 import Header from "../components/Header.jsx";
 import { uploadPersonnel, getBatchPersonnel, getBatchRejected, listBatches } from "../api/client.js";
+import { SpaLink } from "../api/SpaLink.jsx";
 
 /**
  * Phase 1 – Employee Validation
@@ -656,11 +657,11 @@ export default function Phase1({ context = "municipal" }) {
       <div className="p1-shell">
         {/* breadcrumb */}
         <nav className="p1-breadcrumb" aria-label="Breadcrumb">
-          <a href="/home" className="p1-crumb-home" aria-label="Home">
+          <SpaLink href="/home" className="p1-crumb-home" aria-label="Home">
             <HomeIcon />
-          </a>
+          </SpaLink>
           <span className="p1-crumb-sep">/</span>
-          <a href={backHref}>{contextLabel}</a>
+          <SpaLink href={backHref}>{contextLabel}</SpaLink>
           <span className="p1-crumb-sep">/</span>
           <span>Phase 1</span>
           <span className="p1-crumb-sep">/</span>
@@ -1012,9 +1013,9 @@ export default function Phase1({ context = "municipal" }) {
         {/* continue to Phase 2 */}
         {status === "done" && result?.summary.approved > 0 && (
           <div className="p1-next-row">
-            <a className="p1-next-btn" href={`${backHref}/phase-2`}>
+            <SpaLink className="p1-next-btn" href={`${backHref}/phase-2`}>
               Continue to Phase 2 – Officer Assignment
-            </a>
+            </SpaLink>
           </div>
         )}
       </div>

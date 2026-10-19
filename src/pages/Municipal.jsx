@@ -1,6 +1,7 @@
 import "./landing.css";
 import "./Municipal.css";
 import Header from "../components/Header.jsx";
+import { SpaLink } from "../api/SpaLink.jsx";
 
 function ClipboardArt() {
   return (
@@ -309,13 +310,6 @@ const phases = [
 ];
 
 function PhaseCard({ phase }) {
-  const navigate = (href) => {
-    // Use HTML5 history pushState so no full page reload happens
-    // (backend serves index.html for all frontend routes)
-    window.history.pushState(null, '', href);
-    window.dispatchEvent(new PopStateEvent('popstate'));
-  };
-
   return (
     <article className={`phase-card ${phase.theme}`}>
       <div className="phase-visual">
@@ -329,20 +323,16 @@ function PhaseCard({ phase }) {
 
       <p>{phase.description}</p>
 
-      <a
+      <SpaLink
         className="phase-cta"
         href={phase.link}
         aria-label={`View details for ${phase.title}`}
-        onClick={(e) => {
-          e.preventDefault();
-          navigate(phase.link);
-        }}
       >
         Explore
         <span className="phase-arrow" aria-hidden="true">
           →
         </span>
-      </a>
+      </SpaLink>
 
       <svg
         className="card-wave"
@@ -424,13 +414,13 @@ function Municipal() {
       </section>
 
       <div className="tr-back-row">
-        <a href="/home" aria-label="Back to Election Portal">
+        <SpaLink href="/home" aria-label="Back to Election Portal">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M19 12H5" />
             <path d="m12 19-7-7 7-7" />
           </svg>
           Back
-        </a>
+        </SpaLink>
       </div>
 
       <div className="municipal-motto">

@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import "./Phase1.css";
 import "./Training.css";
 import Header from "../components/Header.jsx";
+import { SpaLink } from "../api/SpaLink.jsx";
 import {
   allocateTrainingOrders,
   generateTrainingOrders,
@@ -46,8 +47,12 @@ function UsersIcon() {
 export default function Training({ context } = {}) {
   const [batchGroup, setBatchGroup] = useState("PO");
   const [batches, setBatches] = useState([]);
+  const [selectedBatchId, setSelectedBatchId] = useState(null);
 
-  const selected = batches.find((b) => String(b.id) === String(selectedBatchId)) || null;
+  const selected =
+    (Array.isArray(batches) ? batches : []).find(
+      (b) => String(b?.id) === String(selectedBatchId)
+    ) || null;
 
   // Derive the election context (municipal / panchayat) from the prop; fall
   // back to the route so the back button returns to the right election home page.
@@ -58,7 +63,6 @@ export default function Training({ context } = {}) {
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [selectedBatchId, setSelectedBatchId] = useState(null);
   const [page, setPage] = useState(1);
   const [locations, setLocations] = useState([]);
   const [locationChoice, setLocationChoice] = useState("");
@@ -97,7 +101,11 @@ export default function Training({ context } = {}) {
       setError(null);
       setLoading(true);
       const data = await listPoApoBatches(group);
-      setBatches(data.batches || []);
+      const list = Array.isArray(data?.batches) ? data.batches : [];
+      setBatches(list);
+      setSelectedBatchId((prev) =>
+        list.some((b) => String(b?.id) === String(prev)) ? prev : null
+      );
     } catch (e) {
       setError(e.message || "Failed to load batches");
       setBatches([]);
@@ -247,9 +255,9 @@ export default function Training({ context } = {}) {
         getPoApoBatchMembers(batchGroup, id),
         getPoApoBatchLocations(batchGroup, id).catch(() => ({ locations: [] })),
       ]);
-      setMembers(data.members || []);
+      setMembers(Array.isArray(data?.members) ? data.members : []);
       setLocations(Array.isArray(locData?.locations) ? locData.locations : []);
-      const current = batches.find((b) => b.id === id);
+      const current = (Array.isArray(batches) ? batches : []).find((b) => b?.id === id);
       setLocationChoice(current && current.location_id ? String(current.location_id) : "");
       setSelectedBatchId(id);
       setPage(1);
@@ -273,7 +281,11 @@ export default function Training({ context } = {}) {
     }
   };
 
-  const paginated = members.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const safeMembers = Array.isArray(members) ? members : [];
+  const paginated = safeMembers.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const safeBatches = Array.isArray(batches) ? batches : [];
+  const safeLocations = Array.isArray(locations) ? locations : [];
+  const safeOrders = Array.isArray(orders) ? orders : [];
 
   useEffect(() => {
     let cancelled = false;
@@ -309,14 +321,14 @@ export default function Training({ context } = {}) {
 
       <main className="p1-content">
       <div className="tr-back-row">
-        <a
+        <SpaLink
           href={backHref}
           aria-label={`Back to ${contextLabel} Elections`}
           title={`Back to ${contextLabel} Elections`}
         >
           <ChevronLeft />
           Back to {contextLabel} Elections
-        </a>
+        </SpaLink>
       </div>
         <section className="p1-card" aria-label="Training orders">
           <div className="p1-card-head">
@@ -453,7 +465,7 @@ export default function Training({ context } = {}) {
                 </tr>
               </thead>
               <tbody>
-                {orders.map((o) => (
+                {safeOrders.map((o) => (
                   <tr key={`${o.training_group}-${o.id}`} className="tr-order-row">
                     <td className="tr-cell">{o.sl_no ?? "—"}</td>
                     <td className="tr-cell">{o.order_id}</td>
@@ -485,12 +497,12 @@ export default function Training({ context } = {}) {
                 ))}
               </tbody>
             </table>
-            {orders.length === 0 && (
+            {safeOrders.length === 0 && (
               <div className="tr-empty">No generated orders yet. Allocate → assign venues → Generate → Download ZIP.</div>
             )}
-            {ordersTotal > orders.length && (
+            {ordersTotal > safeOrders.length && (
               <div className="p1-page-info">
-                Showing {orders.length} of {ordersTotal}.
+                Showing {safeOrders.length} of {ordersTotal}.
               </div>
             )}
           </div>
@@ -533,7 +545,7 @@ export default function Training({ context } = {}) {
                   </tr>
                 </thead>
                 <tbody>
-                  {batches.map((b) => (
+                  {safeBatches.map((b) => (
                     <tr
                       key={b.id}
                       className={"tr-row" + (b.id === selectedBatchId ? " is-selected" : "")}
@@ -547,7 +559,7 @@ export default function Training({ context } = {}) {
                   ))}
                 </tbody>
               </table>
-              {batches.length === 0 && (
+              {safeBatches.length === 0 && (
                 <div className="tr-empty">No {batchGroup} batches. Click Allocate after Stage 3.</div>
               )}
             </div>
@@ -572,7 +584,7 @@ export default function Training({ context } = {}) {
                     onChange={(e) => setLocationChoice(e.target.value)}
                   >
                     <option value="">— not assigned —</option>
-                    {locations.map((l) => (
+                    {safeLocations.map((l) => (
                       <option key={l.id} value={String(l.id)}>
                         {l.location_name}
                         {l.panchayat ? ` (${l.panchayat})` : ""}
@@ -584,7 +596,7 @@ export default function Training({ context } = {}) {
                   </button>
                 </span>
                 <span> · {selected.member_count ?? 0} members</span>
-                {locations.length === 0 && (
+                {safeLocations.length === 0 && (
                   <span className="tr-loc-warn">
                     No training locations for mandal “{selected.mandal}”. Import Kakinada locations first.
                   </span>
@@ -595,7 +607,7 @@ export default function Training({ context } = {}) {
             <div className="tr-panel">
               <div className="tr-panel-head">
                 <span className="tr-label">
-                  Members — {members.length} officer{members.length === 1 ? "" : "s"}
+                  Members — {safeMembers.length} officer{safeMembers.length === 1 ? "" : "s"}
                 </span>
               </div>
               <div className="tr-table-wrap">
@@ -632,7 +644,7 @@ export default function Training({ context } = {}) {
                   </tbody>
                 </table>
                 {paginated.length === 0 && <div className="tr-empty">No members in this batch.</div>}
-                {page * PAGE_SIZE < members.length && (
+                {page * PAGE_SIZE < safeMembers.length && (
                   <div className="p1-page-info">
                     <button type="button" className="p1-mini-btn" onClick={() => setPage(page + 1)}>
                       Show more

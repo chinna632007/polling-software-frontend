@@ -9,6 +9,7 @@ import "./Phase1.css";
 import "./Training.css";
 import Header from "../components/Header.jsx";
 import { listSettings, updateSetting, listSettingChanges } from "../api/client.js";
+import { SpaLink } from "../api/SpaLink.jsx";
 
 function SettingField({ setting, disabled, onSave }) {
   const [draft, setDraft] = useState(setting.value);
@@ -169,9 +170,9 @@ export default function Settings() {
       <Header />
       <main className="p1-main">
         <div className="tr-back-row">
-          <a className="p1-back-btn" href={backHref}>
+          <SpaLink className="p1-back-btn" href={backHref}>
             ← Back
-          </a>
+          </SpaLink>
           <h1 className="p1-title">Settings — Customization Center</h1>
         </div>
         <p className="tr-hint">

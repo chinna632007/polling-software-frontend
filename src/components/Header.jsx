@@ -1,4 +1,6 @@
 import { useAuth } from "../api/auth-context.js";
+import { navigate } from "../api/router.jsx";
+import { SpaLink } from "../api/SpaLink.jsx";
 
 /**
  * Shared site Header — used on every page (Home, Login, Municipal,
@@ -16,7 +18,7 @@ function Header() {
     try {
       await logout();
     } finally {
-      window.location.assign("/login");
+      navigate("/login");
     }
   }
 
@@ -65,10 +67,10 @@ function Header() {
             </button>
           </>
         ) : (
-          <a href="/login" className="login-btn">
+          <SpaLink href="/login" className="login-btn">
             <span className="lock-icon">🔒</span>
             Login
-          </a>
+          </SpaLink>
         )}
 
         <div className="district-info">
